@@ -1,0 +1,8 @@
+base_url = "http://192.168.3.142:11434/v1"
+api_key = "ollama"
+model = "gpt-oss:20b"
+embed_model = "gpt-oss:20b"
+workspace = "."
+safety_strict = true
+data_dir = "data"
+log_level = "INFO"

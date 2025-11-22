@@ -1,47 +1,70 @@
-# LLM Agent CLI – Documentation
+# LLM Agent CLI – Detailed Guide
 
-## Overview
-- Repo provides a terminal-first agent CLI (`jay-agent`) configured for an OpenAI-compatible server (default Ollama at `http://192.168.3.142:11434/v1`).
-- Key capabilities: interactive chat with tool-calling (create files, list current dir, run Python scripts), one-shot ask, placeholders for search/index/exec/run/ssh.
-- Installed as an editable package with a console script so `jay-agent` is on PATH when the virtualenv is active.
+## 1) Overview
+- Terminal-first agent CLI (`jay-agent`) that uses an OpenAI-compatible chat API (default Ollama at `http://192.168.3.142:11434/v1`).
+- Capabilities: interactive chat with tool-calling (rich file ops, local shell/PowerShell/Python, SSH), directory listing/tree, text search (ripgrep), vector RAG indexing/search, optional chat transcripts/resume, one-shot ask, exec command, basic package installs, ping.
+- Installed as an editable package exposing console entry `jay-agent`.
 
-## Setup
-1) Activate your venv: `source /Users/jaysettle/Documents/CursAI/2/myenv/bin/activate`
-2) Install/editable: `pip install -e .` (already done).
-3) Model endpoint config: `config/settings.toml` or env vars (`JAY_BASE_URL`, `JAY_MODEL`, `JAY_API_KEY`, etc.).
+## 2) Architecture & Flow
+- **Entry/CLI wiring**: `agent/cli/main.py` sets up argparse and registers subcommands from `agent/cli/commands/`.
+- **Commands**: `chat`, `ask` (stub), `index`, `search`, `exec`, `run` (stub), `ssh`.
+- **Chat pipeline** (`agent/cli/commands/chat.py`):
+  1. Build system prompt (+ optional resume transcript).
+  2. Send a non-stream request with tool schema to detect tool calls.
+  3. Execute requested tools locally (sandboxed to CWD, timeouts).
+  4. Send follow-up non-stream for the final message, or stream if no tool was used.
+  5. Optionally log transcript entries to JSONL.
+- **LLM client** (`agent/core/llm_client.py`): wraps OpenAI-compatible `chat`/`embed` using settings (base_url/api_key/model).
+- **Config** (`agent/core/config.py`, `agent/config/settings.toml`): defaults + env overrides (`JAY_BASE_URL`, `JAY_MODEL`, `JAY_API_KEY`, `JAY_DATA_DIR`, `JAY_LOG_LEVEL`, etc.).
+- **Logging** (`agent/core/logging_utils.py`): console + `data/logs/agent.log` relative to current working directory.
+- **RAG** (`agent/rag`): chunk → embed → vector index (faiss cosine) + metadata. `index_cmd.py` builds the index; `search_cmd.py` and chat `search_index` query it.
+- **Safety boundaries**: all local file/command tools are constrained to the current working directory; deletes require confirm; shell blocks sudo/apt-get; SSH only runs when requested; installs restricted to allowlisted Homebrew packages; timeouts on shell/PowerShell/SSH/Python.
 
-## Commands
-- `jay-agent chat`  
-  - Interactive chat loop. Tools available to the model:
-    - `create_file(path, content)`: writes text files under the current working directory; blocks paths outside CWD; returns relative + absolute path.
-    - `list_dir()`: lists entries in the current working directory.
-    - `run_python(path, args=[])`: executes a Python file via `python3` relative to CWD; returns exit code plus stdout/stderr; blocks paths outside CWD.
-  - System prompt can be overridden: `--system "..."`.
-- `jay-agent ask "question"`: one-shot (stub by default unless wired later).
-- `jay-agent index/search/exec/run/ssh`: present but mostly stubs except chat tools above.
+## 3) Commands & Tools
+- `jay-agent chat`
+  - File ops: `create_file`, `write_file` (overwrite/append), `read_file` (head/tail/range with max chars), `copy_path`, `rename_path`, `delete_path` (confirm + optional recursive), `rename_all` (pattern), `rename_semantic` (content-based), `list_dir`, `list_tree`.
+  - Search: `search_text` (ripgrep), `search_index` (vector RAG index).
+  - Exec local: `run_shell(command)` (blocks sudo/apt-get), `run_powershell(command)` (if pwsh/powershell present), `run_python(path, args=[])`.
+  - Exec remote: `run_ssh(target, command, port?, identity?, user?, password?)` (password requires `sshpass`; prefers keys; warns if sshpass missing).
+  - Install: `install_package(name)` (allowlisted Homebrew installs: sshpass, ripgrep/rg, powershell/pwsh; errors if brew missing).
+  - Network: `ping_host(host, count?, timeout?)`.
+  - Flags: `--system "..."`, `--resume <transcript.jsonl>`, `--transcript-dir <dir>` (default `data/sessions`), `--no-transcript`.
+- `jay-agent ask "question"`: stub one-shot.
+- `jay-agent index [path]`: chunk + embed allowed files under `path` (default `.`), save vector index + metadata under `./data/index.*` (npy + meta.json).
+- `jay-agent search "query"`: embed query and search the saved vector index; prints scores/snippets.
+- `jay-agent exec "cmd"`: run a local shell command via bash (subject to sudo/apt-get block).
+- `jay-agent ssh user@host "cmd"`: run an SSH command (opts: `--port`, `--identity`, `--user`, `--password`).
+- `jay-agent run ...`: stub placeholder.
 
-## Current Behavior
-- Running `jay-agent chat` from any folder (with venv active) uses that folder as workspace for file I/O and script execution.
-- Logs: `data/logs/agent.log` (relative to CWD).
-- File creation and script execution are safeguarded to stay within the current directory.
-- If no response text is returned by the model, the CLI now emits `(no response text)` instead of staying blank.
+## 4) Data, Paths, and Files
+- Logs: `data/logs/agent.log` relative to the directory where you launch the CLI.
+- Transcripts: `data/sessions/session-*.jsonl` by default; disable with `--no-transcript`; resume with `--resume <file>`.
+- RAG index: `data/index.npy` + `data/index.meta.json` relative to the launch directory.
+- All local file/system actions are restricted to the current working directory; SSH runs remotely.
 
-## Project Structure (key parts)
-- `pyproject.toml` – packaging metadata and console script entry.
-- `agent/cli/main.py` – entrypoint for CLI.
-- `agent/cli/commands/` – subcommands; `chat.py` implements chat + tools.
-- `agent/core/` – config, logging, conversation handling, LLM client wrapper.
-- `agent/config/settings.toml` – default settings (base URL, model, data dir, etc.).
-- `agent/rag/` – indexing/search scaffolding (not fully wired in CLI yet).
-- `agent/tools/` – helper modules (not all exposed yet).
+## 5) Setup
+1) Activate venv: `source /Users/jaysettle/Documents/CursAI/2/myenv/bin/activate`
+2) Install editable: `pip install -e .`
+3) Configure endpoint: `config/settings.toml` or env vars (`JAY_BASE_URL`, `JAY_MODEL`, `JAY_API_KEY`, `JAY_DATA_DIR`, `JAY_LOG_LEVEL`, etc.).
+4) Optional: install ripgrep (`brew install ripgrep`) and sshpass (`install_package sshpass` or brew) for search/password SSH.
 
-## How to Use (common examples)
-- Create a file: `jay-agent chat` → “create a file notes/todo.txt with 'buy milk'”
-- List files: “list the files in this folder”
-- Run script: “run script.py” or “run script.py with args 1 2 3”
-- One-shot ask: `jay-agent ask "What can you do?"` (currently stub).
+## 6) Typical Workflows
+- **Chat in a workspace**: `jay-agent chat` → ask “create a file notes/todo.txt with 'buy milk'”, “search for TODO in *.py”, “run ssh user@host 'ls'”, “ping 192.168.3.192”.
+- **Index and search (RAG)**: `jay-agent index .` then `jay-agent search "logging"` or in chat “search the index for logging”.
+- **Transcripts**: `jay-agent chat --transcript-dir data/sessions`; resume with `--resume data/sessions/session-YYYYMMDD-HHMMSS.jsonl`.
+- **Installs**: “install package sshpass” (allowlist; requires Homebrew).
 
-## Notes / Limitations
-- Requires the OpenAI-compatible server reachable at the configured `base_url`.
-- Other subcommands (index/search/exec/run/ssh) are placeholders; extend as needed.
-- All file/system actions are constrained to the current working directory for safety.
+## 7) Safety Notes
+- Paths limited to current working directory for file ops and local exec.
+- Deletes require `confirm=true`; no trash/undo.
+- `run_shell` blocks sudo/apt-get; use `install_package` or manual install.
+- Password SSH requires sshpass; keys recommended.
+- Timeouts on shell/PowerShell/SSH/Python; network/web browsing not exposed.
+
+## 8) Limitations / Future Work
+- No web search/browse tool; all actions are local/SSH.
+- Vector search is faiss cosine only (no rerank/metadata filtering).
+- No undo/trash for destructive ops; no journal/rollback.
+- `ask`/`run` are stubs; no memory beyond transcripts.
+- No allow/deny lists or secret redaction for shell/SSH; only timeouts.
+- No automated tests/CI; minimal Windows handling (pwsh optional).

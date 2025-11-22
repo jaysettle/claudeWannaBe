@@ -2,7 +2,7 @@
 
 ## 1) Overview
 - Terminal-first agent CLI (`jay-agent`) that uses an OpenAI-compatible chat API (default Ollama at `http://192.168.3.142:11434/v1`).
-- Capabilities: interactive chat with tool-calling (rich file ops, local shell/PowerShell/Python, SSH), directory listing/tree, text search (ripgrep), vector RAG indexing/search, optional chat transcripts/resume, one-shot ask, exec command, basic package installs, ping.
+- Capabilities: interactive chat with tool-calling (rich file ops, local shell/PowerShell/Python, SSH), directory listing/tree, text search (ripgrep), vector RAG indexing/search, optional chat transcripts/resume, one-shot ask, exec command, basic package installs, ping, web search (SerpAPI with optional fetch/summaries).
 - Installed as an editable package exposing console entry `jay-agent`.
 
 ## 2) Architecture & Flow
@@ -23,7 +23,7 @@
 ## 3) Commands & Tools
 - `jay-agent chat`
   - File ops: `create_file`, `write_file` (overwrite/append), `read_file` (head/tail/range with max chars), `copy_path`, `rename_path`, `delete_path` (confirm + optional recursive), `rename_all` (pattern), `rename_semantic` (content-based), `list_dir`, `list_tree`.
-  - Search: `search_text` (ripgrep), `search_index` (vector RAG index).
+  - Search: `search_text` (ripgrep), `search_index` (vector RAG index), `web_search` (SerpAPI; requires `JAY_SERPAPI_KEY`, supports site filter, result count, optional fetch/summarize top links).
   - Exec local: `run_shell(command)` (blocks sudo/apt-get), `run_powershell(command)` (if pwsh/powershell present), `run_python(path, args=[])`.
   - Exec remote: `run_ssh(target, command, port?, identity?, user?, password?)` (password requires `sshpass`; prefers keys; warns if sshpass missing).
   - Install: `install_package(name)` (allowlisted Homebrew installs: sshpass, ripgrep/rg, powershell/pwsh; errors if brew missing).
@@ -32,6 +32,7 @@
 - `jay-agent ask "question"`: stub one-shot.
 - `jay-agent index [path]`: chunk + embed allowed files under `path` (default `.`), save vector index + metadata under `./data/index.*` (npy + meta.json).
 - `jay-agent search "query"`: embed query and search the saved vector index; prints scores/snippets.
+- Web search: via chat `web_search` tool (SerpAPI; `JAY_SERPAPI_KEY` required).
 - `jay-agent exec "cmd"`: run a local shell command via bash (subject to sudo/apt-get block).
 - `jay-agent ssh user@host "cmd"`: run an SSH command (opts: `--port`, `--identity`, `--user`, `--password`).
 - `jay-agent run ...`: stub placeholder.

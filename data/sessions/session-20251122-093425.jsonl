@@ -1,0 +1,3 @@
+{"role": "user", "content": "web search bill clinton"}
+{"role": "tool", "content": "web_search failed: Missing JAY_SERPAPI_KEY environment variable.", "tool": "web_search"}
+{"role": "assistant", "content": "I need a valid SerpAPI key to perform the web search. Could you provide the `JAY_SERPAPI_KEY` value?"}

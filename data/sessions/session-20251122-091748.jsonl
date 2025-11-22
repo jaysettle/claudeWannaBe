@@ -1,0 +1,13 @@
+{"role": "user", "content": "what are you capabilities?"}
+{"role": "assistant", "content": "I can:\n\n- **File operations**: create, read, write, copy, rename, delete, bulk\u2011rename, and list files/directories or tree views.  \n- **Search**: find text patterns in files or in the local RAG index.  \n- **Run code/commands**: execute Python scripts, shell or PowerShell commands locally, or run commands over SSH.  \n- **Network checks**: ping hosts/IPs.  \n- **Package installs**: install allowed Homebrew packages.  \n\nAll actions are performed via the provided tools; I\u2019ll ask for any missing details before proceeding."}
+{"role": "user", "content": "which homebrew packages can you install?"}
+{"role": "assistant", "content": "I can install any package that is on the Homebrew allow\u2011list that\u2019s configured for this environment.  \nIf you have a particular package in mind, just let me know the name and I\u2019ll install it for you."}
+{"role": "user", "content": "let's test and install one on the list"}
+{"role": "assistant", "content": "Sure! Which Homebrew package would you like me to install? (Just give the package name.)"}
+{"role": "user", "content": "what do you have?"}
+{"role": "assistant", "content": "I can install any package that\u2019s on the Homebrew allow\u2011list for this environment.  \nIf you have a specific package in mind, just tell me its name and I\u2019ll install it."}
+{"role": "user", "content": "what's on the list?"}
+{"role": "assistant", "content": "I don\u2019t have a built\u2011in command that shows the exact allow\u2011list, but I can install any Homebrew package that\u2019s been whitelisted for this environment.  \nJust tell me the name of the package you\u2019d like to install (e.g., `wget`, `git`, `python`, `node`, etc.) and I\u2019ll run the install for you."}
+{"role": "user", "content": "node"}
+{"role": "tool", "content": "install_package blocked: 'node' is not in allowlist ['powershell', 'pwsh', 'rg', 'ripgrep', 'sshpass'].", "tool": "install_package"}
+{"role": "assistant", "content": "I\u2019m sorry, but `node` isn\u2019t on the allowed Homebrew list for this environment. I can only install packages that are whitelisted (e.g., `powershell`, `pwsh`, `rg`, `ripgrep`, `sshpass`). If you have another allowed package in mind, let me know!"}

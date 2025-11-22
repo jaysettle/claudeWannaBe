@@ -5,7 +5,7 @@ Terminal-first agent CLI that talks to an OpenAI-compatible endpoint (default Ol
 ## Status
 - Interactive chat wired to call tools:
   - File ops: `create_file`, `write_file` (overwrite/append), `read_file` (head/tail/range), `copy_path`, `rename_path`, `delete_path` (confirm + optional recursive), `rename_all` (pattern), `rename_semantic` (content-based), `list_dir`, `list_tree`.
-  - Search: `search_text` (ripgrep), `search_index` (RAG index).
+  - Search: `search_text` (ripgrep), `search_index` (RAG index), `web_search` (SerpAPI; needs `JAY_SERPAPI_KEY`, supports site filter, fetch/summarize top links).
   - Exec: `run_shell` (bash), `run_powershell` (local PowerShell), `run_python` (CWD), `run_ssh` (remote; key or password with sshpass).
   - Install: `install_package` (allowlist via Homebrew: sshpass, ripgrep, powershell). run_shell blocks sudo/apt-get; use install_package or run manually.
   - Network: `ping_host` (reachability checks).
@@ -24,6 +24,7 @@ Terminal-first agent CLI that talks to an OpenAI-compatible endpoint (default Ol
   - Flags: `--system "Your instructions"`, `--resume path/to/transcript.jsonl`, `--transcript-dir DIR`, `--no-transcript`
 - One-shot ask (stub): `jay-agent ask "question"`
 - Index/search: `jay-agent index .`; `jay-agent search "query"` (vector similarity via faiss)
+- Web search: “web search 'query'” (requires `JAY_SERPAPI_KEY` for SerpAPI)
 - SSH: `jay-agent ssh user@host "cmd"` (opts: `--port`, `--identity`)
 - Other commands exist but are not yet fully implemented.
 

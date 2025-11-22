@@ -6,6 +6,7 @@ import json
 import os
 import shutil
 import subprocess
+import time
 from pathlib import Path
 from datetime import datetime
 
@@ -279,6 +280,23 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "web_search",
+            "description": "Web search via SerpAPI (requires JAY_SERPAPI_KEY).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search query"},
+                    "num": {"type": "integer", "description": "Number of results (default 5, max 10)", "default": 5},
+                    "site": {"type": "string", "description": "Optional site/domain filter, e.g., example.com"},
+                    "fetch": {"type": "integer", "description": "Fetch and summarize top N results (default 0, max 3)", "default": 0},
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "run_powershell",
             "description": "Run a PowerShell command locally in the current working directory.",
             "parameters": {
@@ -353,7 +371,12 @@ def run_chat(args, settings):
             _append_transcript(transcript, {"role": "user", "content": user_input})
 
         try:
+            start = time.perf_counter()
             handle_chat_turn(client, convo, settings, transcript, logger)
+            elapsed = time.perf_counter() - start
+            print(f"(completed in {elapsed:.2f}s)")
+        except KeyboardInterrupt:
+            print("\nRequest cancelled. Ready for next prompt.")
         except Exception as exc:  # pragma: no cover - interactive path
             logger.error("Chat failed: %s", exc)
             print(f"Error talking to model: {exc}")
@@ -407,6 +430,8 @@ def handle_chat_turn(client: LLMClient, convo: Conversation, settings, transcrip
                 result = _handle_ping_host(tool_call.function.arguments)
             elif name == "install_package":
                 result = _handle_install_package(tool_call.function.arguments)
+            elif name == "web_search":
+                result = _handle_web_search(tool_call.function.arguments)
             else:
                 result = f"Unsupported tool: {name}"
             convo.add_tool_result(tool_call.id, result)
@@ -818,13 +843,17 @@ def _stream_response(resp, convo: Conversation, transcript=None):
     sys.stdout.write("agent> ")
     sys.stdout.flush()
     assistant_text = ""
-    for chunk in resp:
-        delta = chunk.choices[0].delta
-        if delta and delta.content:
-            token = delta.content
-            assistant_text += token
-            sys.stdout.write(token)
-            sys.stdout.flush()
+    try:
+        for chunk in resp:
+            delta = chunk.choices[0].delta
+            if delta and delta.content:
+                token = delta.content
+                assistant_text += token
+                sys.stdout.write(token)
+                sys.stdout.flush()
+    except KeyboardInterrupt:
+        sys.stdout.write("\n(cancelled)\n")
+        sys.stdout.flush()
     print()
     convo.add_assistant(assistant_text)
     if transcript:
@@ -1077,6 +1106,54 @@ def _handle_run_powershell(raw_args: str) -> str:
     if err:
         parts.append(f"stderr:\n{err}")
     return "\n".join(parts)
+
+def _handle_web_search(raw_args: str) -> str:
+    from ...tools.web_search import serpapi_search, fetch_page, overlap_score, summarize
+    try:
+        args = json.loads(raw_args or "{}")
+    except json.JSONDecodeError as exc:
+        return f"Invalid arguments for web_search: {exc}"
+
+    query = args.get("query")
+    num = max(1, min(int(args.get("num", 5)), 10))
+    site = args.get("site")
+    fetch_n = max(0, min(int(args.get("fetch", 0)), 3))
+    if not query:
+        return "web_search failed: 'query' is required."
+
+    result = serpapi_search(query, num=num, site=site)
+    if "error" in result:
+        return f"web_search failed: {result['error']}"
+
+    results = result.get("results", [])
+    # Rerank by simple overlap
+    reranked = sorted(results, key=lambda x: overlap_score(x.get("snippet", "") or "", query), reverse=True)
+    lines = []
+    to_fetch = reranked[:fetch_n] if fetch_n else []
+    fetched = []
+    for item in to_fetch:
+        link = item.get("link")
+        if not link:
+            continue
+        content = fetch_page(link)
+        summary = summarize(content)
+        fetched.append({"link": link, "summary": summary})
+
+    for idx, item in enumerate(reranked, 1):
+        title = item.get("title") or "(no title)"
+        link = item.get("link") or "(no link)"
+        snippet = item.get("snippet") or ""
+        lines.append(f"{idx}. {title}\n   {link}\n   {snippet}")
+
+    if fetched:
+        lines.append("\nSummaries:")
+        for f in fetched:
+            lines.append(f"- {f['link']}\n  {f['summary']}")
+
+    header = f"web_search results for '{query}'"
+    if site:
+        header += f" (site:{site})"
+    return header + ":\n" + ("\n".join(lines) if lines else "(no results)")
 
 
 def _handle_install_package(raw_args: str) -> str:

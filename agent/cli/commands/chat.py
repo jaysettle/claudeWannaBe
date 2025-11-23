@@ -172,7 +172,7 @@ TOOLS = [
     {
         "type": "function",
         "function": {
-            "name": "list_dir",
+            "name": "list_directory",
             "description": "List files/directories in the current working directory.",
             "parameters": {
                 "type": "object",
@@ -935,8 +935,8 @@ def handle_chat_turn(client: LLMClient, convo: Conversation, settings, transcrip
                 result = _handle_rename_semantic(tool_call.function.arguments)
             elif name == "delete_path":
                 result = _handle_delete_path(tool_call.function.arguments)
-            elif name == "list_dir":
-                result = _handle_list_dir()
+            elif name == "list_directory":
+                result = _handle_list_directory()
             elif name == "list_tree":
                 result = _handle_list_tree(tool_call.function.arguments)
             elif name == "search_text":
@@ -2693,7 +2693,7 @@ def _handle_install_package(raw_args: str) -> str:
     return "\n".join(parts)
 
 
-def _handle_list_dir() -> str:
+def _handle_list_directory() -> str:
     base = Path.cwd().resolve()
     try:
         entries = sorted(base.iterdir(), key=lambda p: p.name.lower())
@@ -2705,7 +2705,7 @@ def _handle_list_dir() -> str:
         marker = "/" if entry.is_dir() else ""
         lines.append(f"{entry.name}{marker}")
     listing = "\n".join(lines) or "(empty directory)"
-    return f"list_dir success for {base}:\n{listing}"
+    return f"list_directory success for {base}:\n{listing}"
 
 
 def _handle_search_text(raw_args: str) -> str:
@@ -2819,7 +2819,11 @@ def _handle_search_index(raw_args: str, settings, llm_client) -> str:
 
 def _resolve_path(path_str: str):
     base = Path.cwd().resolve()
-    target = (base / path_str).resolve() if not Path(path_str).is_absolute() else Path(path_str).resolve()
+    target_path = Path(path_str)
+    if target_path.is_absolute():
+        target = target_path.resolve()
+        return base, target, None
+    target = (base / target_path).resolve()
     try:
         target.relative_to(base)
     except ValueError:

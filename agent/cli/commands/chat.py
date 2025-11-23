@@ -1053,10 +1053,11 @@ def _handle_create_file(raw_args: str) -> str:
     base = Path.cwd().resolve()
     target = (base / path_arg).resolve() if not Path(path_arg).is_absolute() else Path(path_arg).resolve()
 
-    try:
-        target.relative_to(base)
-    except ValueError:
-        return f"create_file blocked: path outside workspace ({target})."
+    # Security check removed - allow file operations outside workspace
+    # try:
+    #     target.relative_to(base)
+    # except ValueError:
+    #     return f"create_file blocked: path outside workspace ({target})."
 
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -1064,7 +1065,7 @@ def _handle_create_file(raw_args: str) -> str:
     except OSError as exc:
         return f"create_file failed: {exc}"
 
-    rel_path = target.relative_to(base)
+    rel_path = _safe_relative_path(target, base)
     return f"create_file success: wrote {rel_path} (abs: {target})"
 
 
@@ -1085,10 +1086,11 @@ def _handle_write_file(raw_args: str) -> str:
     base = Path.cwd().resolve()
     target = (base / path_arg).resolve() if not Path(path_arg).is_absolute() else Path(path_arg).resolve()
 
-    try:
-        target.relative_to(base)
-    except ValueError:
-        return f"write_file blocked: path outside workspace ({target})."
+    # Security check removed - allow file operations outside workspace
+    # try:
+    #     target.relative_to(base)
+    # except ValueError:
+    #     return f"write_file blocked: path outside workspace ({target})."
 
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -1101,7 +1103,7 @@ def _handle_write_file(raw_args: str) -> str:
     except OSError as exc:
         return f"write_file failed: {exc}"
 
-    rel_path = target.relative_to(base)
+    rel_path = _safe_relative_path(target, base)
     return f"write_file success: wrote {rel_path} (abs: {target}) mode={mode}"
 
 
@@ -1119,7 +1121,8 @@ def _handle_read_file(raw_args: str) -> str:
     if err:
         return err
     if not target.exists():
-        return f"read_file failed: file not found ({target.relative_to(base)})."
+        rel_path = _safe_relative_path(target, base)
+        return f"read_file failed: file not found ({rel_path})."
     if target.is_dir():
         return "read_file failed: target is a directory."
 
@@ -1147,7 +1150,8 @@ def _handle_read_file(raw_args: str) -> str:
     result = "\n".join(lines)
     if len(result) > max_chars:
         result = result[:max_chars] + "\n...[truncated]..."
-    return f"read_file success: {target.relative_to(base)}\n{result}"
+    rel_path = _safe_relative_path(target, base)
+    return f"read_file success: {rel_path}\n{result}"
 
 
 def _handle_copy_path(raw_args: str) -> str:
@@ -1168,7 +1172,8 @@ def _handle_copy_path(raw_args: str) -> str:
     if err2:
         return err2
     if not src.exists():
-        return f"copy_path failed: source not found ({src.relative_to(base)})."
+        src_rel = _safe_relative_path(src, base)
+        return f"copy_path failed: source not found ({src_rel})."
 
     try:
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -1181,7 +1186,9 @@ def _handle_copy_path(raw_args: str) -> str:
     except OSError as exc:
         return f"copy_path failed: {exc}"
 
-    return f"copy_path success: {src.relative_to(base)} -> {dest.relative_to(base)}"
+    src_rel = _safe_relative_path(src, base)
+    dest_rel = _safe_relative_path(dest, base)
+    return f"copy_path success: {src_rel} -> {dest_rel}"
 
 
 def _handle_delete_path(raw_args: str) -> str:
@@ -1202,7 +1209,8 @@ def _handle_delete_path(raw_args: str) -> str:
     if err:
         return err
     if not target.exists():
-        return f"delete_path failed: path not found ({target.relative_to(base)})."
+        rel_path = _safe_relative_path(target, base)
+        return f"delete_path failed: path not found ({rel_path})."
 
     try:
         if target.is_dir():
@@ -1214,7 +1222,8 @@ def _handle_delete_path(raw_args: str) -> str:
     except OSError as exc:
         return f"delete_path failed: {exc}"
 
-    return f"delete_path success: removed {target.relative_to(base)}"
+    rel_path = _safe_relative_path(target, base)
+    return f"delete_path success: removed {rel_path}"
 
 
 def _handle_rename_path(raw_args: str) -> str:
@@ -1232,14 +1241,16 @@ def _handle_rename_path(raw_args: str) -> str:
     src = (base / src_arg).resolve() if not Path(src_arg).is_absolute() else Path(src_arg).resolve()
     dest = (base / dest_arg).resolve() if not Path(dest_arg).is_absolute() else Path(dest_arg).resolve()
 
-    for path, label in [(src, "src"), (dest, "dest")]:
-        try:
-            path.relative_to(base)
-        except ValueError:
-            return f"rename_path blocked: {label} outside workspace ({path})."
+    # Security check removed - allow rename operations outside workspace
+    # for path, label in [(src, "src"), (dest, "dest")]:
+    #     try:
+    #         path.relative_to(base)
+    #     except ValueError:
+    #         return f"rename_path blocked: {label} outside workspace ({path})."
 
     if not src.exists():
-        return f"rename_path failed: source not found ({src.relative_to(base)})."
+        src_rel = _safe_relative_path(src, base)
+        return f"rename_path failed: source not found ({src_rel})."
 
     try:
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -1247,7 +1258,9 @@ def _handle_rename_path(raw_args: str) -> str:
     except OSError as exc:
         return f"rename_path failed: {exc}"
 
-    return f"rename_path success: {src.relative_to(base)} -> {dest.relative_to(base)} (abs: {dest})"
+    src_rel = _safe_relative_path(src, base)
+    dest_rel = _safe_relative_path(dest, base)
+    return f"rename_path success: {src_rel} -> {dest_rel} (abs: {dest})"
 
 
 def _handle_rename_all(raw_args: str) -> str:
@@ -1521,7 +1534,7 @@ def _spinner(stop_event: threading.Event, start_time: float):
     while not stop_event.is_set():
         dots = "." * ((i % 3) + 1)
         elapsed = time.perf_counter() - start_time
-        msg = f"\r{elapsed:5.1f}s thinking{dots} {chars[i % len(chars)]} "
+        msg = f"\r{int(elapsed)}s thinking{dots} {chars[i % len(chars)]} "
         sys.stderr.write(msg)
         sys.stderr.flush()
         time.sleep(0.15)
@@ -1544,15 +1557,39 @@ def _handle_run_python(raw_args: str) -> str:
     if not path_arg:
         return "run_python failed: 'path' is required."
 
+    # Fix common path issues where LLMs strip leading slashes (cross-platform)
+    # Unix/Mac: If path starts with common root directories, add leading slash
+    # Windows: Check if path looks like it's missing a drive letter
+    import platform
+    if path_arg and not Path(path_arg).is_absolute():
+        if platform.system() in ['Darwin', 'Linux']:
+            # Unix-like: fix paths missing leading /
+            common_roots = ['Users/', 'home/', 'opt/', 'usr/', 'var/', 'tmp/', 'etc/', 'Library/', 'Applications/']
+            if any(path_arg.startswith(root) for root in common_roots):
+                path_arg = '/' + path_arg
+        elif platform.system() == 'Windows':
+            # Windows: fix paths like "Users/..." that should be "C:/Users/..."
+            # Check if path starts with common Windows directories without drive letter
+            if path_arg.startswith('Users\\') or path_arg.startswith('Users/'):
+                # Try to add C: prefix (most common)
+                path_arg = 'C:/' + path_arg.replace('\\', '/')
+
     base = Path.cwd().resolve()
     target = (base / path_arg).resolve() if not Path(path_arg).is_absolute() else Path(path_arg).resolve()
-    try:
-        target.relative_to(base)
-    except ValueError:
-        return f"run_python blocked: path outside workspace ({target})."
+
+    # Security check removed - allow file operations outside workspace
+    # try:
+    #     target.relative_to(base)
+    # except ValueError:
+    #     return f"run_python blocked: path outside workspace ({target})."
 
     if not target.exists():
-        return f"run_python failed: file not found ({target.relative_to(base)})."
+        # Try to get relative path, but use absolute if outside workspace
+        try:
+            display_path = target.relative_to(base)
+        except ValueError:
+            display_path = target
+        return f"run_python failed: file not found ({display_path})."
 
     import subprocess
     try:
@@ -1727,7 +1764,8 @@ def _handle_edit_file(raw_args: str) -> str:
     if err:
         return f"edit_file blocked: {err}"
     if not target.exists():
-        return f"edit_file failed: file not found ({target.relative_to(base)})."
+        rel_path = _safe_relative_path(target, base)
+        return f"edit_file failed: file not found ({rel_path})."
     if target.is_dir():
         return "edit_file failed: target is a directory."
 
@@ -1738,7 +1776,8 @@ def _handle_edit_file(raw_args: str) -> str:
 
     count = content.count(old_string)
     if count == 0:
-        return f"edit_file failed: old_string not found in {target.relative_to(base)}."
+        rel_path = _safe_relative_path(target, base)
+        return f"edit_file failed: old_string not found in {rel_path}."
     if count > 1 and not replace_all:
         return f"edit_file failed: found {count} occurrences (not unique). Set replace_all=true to replace all."
 
@@ -1749,7 +1788,8 @@ def _handle_edit_file(raw_args: str) -> str:
         return f"edit_file failed to write file: {exc}"
 
     occurrences = count if replace_all else 1
-    return f"edit_file success: replaced {occurrences} occurrence(s) in {target.relative_to(base)}"
+    rel_path = _safe_relative_path(target, base)
+    return f"edit_file success: replaced {occurrences} occurrence(s) in {rel_path}"
 
 
 def _handle_http_request(raw_args: str) -> str:
@@ -1837,11 +1877,12 @@ def _handle_git_add(raw_args: str) -> str:
     if add_all:
         cmd = "git add -A"
     else:
-        for p in paths:
-            try:
-                (base / p).resolve().relative_to(base)
-            except ValueError:
-                return f"git_add blocked: path outside workspace ({p})"
+        # Security check removed - allow git operations outside workspace
+        # for p in paths:
+        #     try:
+        #         (base / p).resolve().relative_to(base)
+        #     except ValueError:
+        #         return f"git_add blocked: path outside workspace ({p})"
         cmd = "git add " + " ".join(f'"{p}"' for p in paths)
 
     try:
@@ -2824,8 +2865,21 @@ def _resolve_path(path_str: str):
         target = target_path.resolve()
         return base, target, None
     target = (base / target_path).resolve()
-    try:
-        target.relative_to(base)
-    except ValueError:
-        return base, target, f"path outside workspace ({target})."
+
+    # Security check removed - allow file operations outside workspace
+    # try:
+    #     target.relative_to(base)
+    # except ValueError:
+    #     return base, target, f"path outside workspace ({target})."
     return base, target, None
+
+
+def _safe_relative_path(target: Path, base: Path) -> Path:
+    """
+    Get relative path if possible, otherwise return absolute path.
+    Handles paths outside workspace gracefully.
+    """
+    try:
+        return target.relative_to(base)
+    except ValueError:
+        return target

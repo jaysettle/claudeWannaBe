@@ -187,10 +187,22 @@ if __name__ == "__main__":
         memory_limit_mb: Optional[int],
         env: Dict[str, str],
     ) -> subprocess.CompletedProcess:
+        # On macOS, preexec_fn can cause issues with fork() in interactive sessions
+        # Disable memory limits on Darwin (macOS) to avoid crashes
+        import platform
+        is_macos = platform.system() == 'Darwin'
+
         def set_limits():
             if resource and memory_limit_mb:
-                bytes_limit = memory_limit_mb * 1024 * 1024
-                resource.setrlimit(resource.RLIMIT_AS, (bytes_limit, bytes_limit))
+                try:
+                    bytes_limit = memory_limit_mb * 1024 * 1024
+                    resource.setrlimit(resource.RLIMIT_AS, (bytes_limit, bytes_limit))
+                except Exception:
+                    # Silently ignore if setrlimit fails
+                    pass
+
+        # Disable preexec_fn on macOS to avoid fork() issues
+        use_preexec = resource and memory_limit_mb and not is_macos
 
         return subprocess.run(
             ["python3", str(runner)],
@@ -199,7 +211,7 @@ if __name__ == "__main__":
             capture_output=True,
             text=True,
             timeout=timeout,
-            preexec_fn=set_limits if resource and memory_limit_mb else None,
+            preexec_fn=set_limits if use_preexec else None,
         )
 
     def _parse_result(self, proc: subprocess.CompletedProcess, start: float, workspace: Workspace) -> ExecResult:

@@ -20,7 +20,7 @@ def setup_logging(settings: Settings):
         level=getattr(logging, settings.log_level.upper(), logging.INFO),
         format=fmt,
         handlers=[
-            logging.StreamHandler(),
+            # Only log to file, not console (keeps output clean)
             logging.FileHandler(log_file, encoding="utf-8"),
         ],
     )

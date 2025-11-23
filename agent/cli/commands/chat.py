@@ -14,6 +14,7 @@ from datetime import datetime
 
 from ...core.conversation import Conversation
 from ...core.llm_client import LLMClient
+from ...core.colors import prompt, agent_prompt, tool, dim, error, success, info
 from ...tools.python_exec import PythonExecutor
 from ...rag.index import load_index
 from ...rag.search import search as rag_search
@@ -309,9 +310,9 @@ TOOLS = [
                     "query": {"type": "string", "description": "Search query"},
                     "num": {"type": "integer", "description": "Number of results (default 5, max 10)", "default": 5},
                     "site": {"type": "string", "description": "Optional site/domain filter, e.g., example.com"},
-                    "fetch": {"type": "integer", "description": "Fetch and summarize top N results (default 0, max 3)", "default": 0},
+                    "fetch": {"type": "integer", "description": "Fetch and summarize top N results (default 0, max 3). Only set if you need page content.", "default": 0},
                     "max_bytes": {"type": "integer", "description": "Max bytes to download per fetch (default 1_000_000).", "default": 1000000},
-                    "max_fetch_time": {"type": "integer", "description": "Max seconds per fetch (default 15).", "default": 15},
+                    "max_fetch_time": {"type": "integer", "description": "Max seconds per fetch (default 5).", "default": 5},
                 },
                 "required": ["query"],
             },
@@ -859,7 +860,7 @@ def run_chat(args, settings):
     print("Type /help for slash commands.")
     while True:
         try:
-            user_input = input("you> ").strip()
+            user_input = input(prompt("you> ")).strip()
         except (EOFError, KeyboardInterrupt):
             print("\nBye.")
             break
@@ -892,20 +893,22 @@ def run_chat(args, settings):
 
             handle_chat_turn(client, convo, settings, transcript, logger, stop_event=stop_event)
             elapsed = time.perf_counter() - start
-            print(f"(completed in {elapsed:.2f}s)")
+            print(dim(f"(completed in {elapsed:.2f}s)"))
         except KeyboardInterrupt:
             print("\nRequest cancelled. Ready for next prompt.")
         except Exception as exc:  # pragma: no cover - interactive path
             logger.error("Chat failed: %s", exc)
-            print(f"Error talking to model: {exc}")
+            print(error(f"Error talking to model: {exc}"))
             break
         finally:
             if stop_event:
                 stop_event.set()
             if spinner_thread:
                 spinner_thread.join(timeout=1)
-                sys.stderr.write("\r")
-                sys.stderr.flush()
+                # Clear the spinner line (only if TTY)
+                if sys.stderr.isatty():
+                    sys.stderr.write("\r" + " " * 50 + "\r")
+                    sys.stderr.flush()
 
 
 def handle_chat_turn(client: LLMClient, convo: Conversation, settings, transcript, logger, stop_event=None):
@@ -1442,7 +1445,7 @@ def _ensure_unique_name(base: Path, stem: str, ext: str, used: set[str]) -> str:
 
 
 def _stream_response(resp, convo: Conversation, transcript=None):
-    sys.stdout.write("agent> ")
+    sys.stdout.write(agent_prompt("agent> "))
     sys.stdout.flush()
     assistant_text = ""
     try:
@@ -1468,7 +1471,7 @@ def _emit_message(resp, convo: Conversation, transcript=None, fallback: str | No
     content = (msg.content or "").strip() or "(no response text)"
     if content == "(no response text)" and fallback:
         content = fallback
-    sys.stdout.write("agent> ")
+    sys.stdout.write(agent_prompt("agent> "))
     sys.stdout.write(content)
     sys.stdout.write("\n")
     sys.stdout.flush()
@@ -1529,12 +1532,19 @@ def _print_transcripts(transcript_dir: Path):
 
 
 def _spinner(stop_event: threading.Event, start_time: float):
+    # Only show spinner if stderr is a TTY (interactive terminal)
+    # Skip if output is redirected to a file
+    if not sys.stderr.isatty():
+        return
+
+    from ...core.colors import Colors
     chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
     i = 0
     while not stop_event.is_set():
         dots = "." * ((i % 3) + 1)
         elapsed = time.perf_counter() - start_time
-        msg = f"\r{int(elapsed)}s thinking{dots} {chars[i % len(chars)]} "
+        # Cyan spinner for subtle visual feedback
+        msg = f"\r{Colors.CYAN}{int(elapsed)}s thinking{dots} {chars[i % len(chars)]}{Colors.RESET} "
         sys.stderr.write(msg)
         sys.stderr.flush()
         time.sleep(0.15)
@@ -1542,7 +1552,16 @@ def _spinner(stop_event: threading.Event, start_time: float):
 
 
 def _status(message: str):
-    sys.stderr.write(f"\n{message}\n")
+    """Print a status message (tool execution info)."""
+    # Color tool names in status messages
+    colored_msg = message
+    for tool_name in ["web_search", "run_shell", "run_python", "read_file", "write_file",
+                      "create_file", "list_tree", "search_text", "git_status", "run_ssh",
+                      "python_exec", "pip_install", "list_directory", "delete_path", "copy_path"]:
+        if tool_name in colored_msg:
+            colored_msg = colored_msg.replace(tool_name, tool(tool_name))
+            break  # Only color first tool name found
+    sys.stderr.write(f"\n{dim(colored_msg)}\n")
     sys.stderr.flush()
 
 
@@ -2626,9 +2645,9 @@ def _handle_web_search(raw_args: str) -> str:
     query = args.get("query")
     num = max(1, min(int(args.get("num", 5)), 10))
     site = args.get("site")
-    fetch_n = max(0, min(int(args.get("fetch", 1)), 3))
+    fetch_n = max(0, min(int(args.get("fetch", 0)), 3))  # Changed default from 1 to 0 (don't fetch pages)
     max_bytes = int(args.get("max_bytes", 1_000_000))
-    max_fetch_time = int(args.get("max_fetch_time", 15))
+    max_fetch_time = int(args.get("max_fetch_time", 5))  # Reduced from 15s to 5s
     if not query:
         return "web_search failed: 'query' is required."
 
@@ -2649,12 +2668,19 @@ def _handle_web_search(raw_args: str) -> str:
         link = item.get("link")
         if not link:
             continue
-        content = fetch_page(link, max_bytes=max_bytes, timeout=max_fetch_time)
-        if not content:
-            fetched.append({"link": link, "summary": "(skipped: too large or failed)"})
-            continue
-        summary = summarize(content)
-        fetched.append({"link": link, "summary": summary})
+        try:
+            content = fetch_page(link, max_bytes=max_bytes, timeout=max_fetch_time)
+            if not content:
+                fetched.append({"link": link, "summary": "(skipped: too large or failed)"})
+                continue
+            summary = summarize(content)
+            fetched.append({"link": link, "summary": summary})
+        except KeyboardInterrupt:
+            log.info("web_search fetch cancelled by user")
+            break
+        except Exception as e:
+            log.warning("web_search fetch failed for %s: %s", link, e)
+            fetched.append({"link": link, "summary": f"(fetch error: {e})"})
     if fetch_n:
         _status(f"web_search: fetched {len(fetched)}/{len(to_fetch)} links in {time.perf_counter()-start_time:.2f}s; formatting…")
     else:

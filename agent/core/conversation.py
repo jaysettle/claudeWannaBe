@@ -33,3 +33,7 @@ class Conversation:
 
     def history(self) -> List[Dict]:
         return list(self.messages)
+
+    def clear(self):
+        """Clear conversation messages."""
+        self.messages = []

@@ -4,7 +4,6 @@ Slash command system for jay-agent interactive chat.
 Usage:
     In agent/cli/commands/chat.py, import and use:
 
-    from .slash_commands import handle_slash_command, setup_command_completion
 
     # In run_chat(), before main loop:
     setup_command_completion()

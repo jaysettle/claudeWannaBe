@@ -7,11 +7,13 @@ import os
 import shutil
 import subprocess
 import time
+import threading
 from pathlib import Path
 from datetime import datetime
 
 from ...core.conversation import Conversation
 from ...core.llm_client import LLMClient
+from ...tools.python_exec import PythonExecutor
 from ...rag.index import load_index
 from ...rag.search import search as rag_search
 
@@ -289,6 +291,8 @@ TOOLS = [
                     "num": {"type": "integer", "description": "Number of results (default 5, max 10)", "default": 5},
                     "site": {"type": "string", "description": "Optional site/domain filter, e.g., example.com"},
                     "fetch": {"type": "integer", "description": "Fetch and summarize top N results (default 0, max 3)", "default": 0},
+                    "max_bytes": {"type": "integer", "description": "Max bytes to download per fetch (default 1_000_000).", "default": 1000000},
+                    "max_fetch_time": {"type": "integer", "description": "Max seconds per fetch (default 15).", "default": 15},
                 },
                 "required": ["query"],
             },
@@ -306,6 +310,220 @@ TOOLS = [
                     "timeout": {"type": "integer", "description": "Timeout seconds (default 30).", "default": 30},
                 },
                 "required": ["command"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "run_tests",
+            "description": "Run tests (default pytest) with timeout.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "cmd": {"type": "string", "description": "Test command", "default": "pytest"},
+                    "timeout": {"type": "integer", "description": "Timeout seconds (default 120).", "default": 120},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "run_lint",
+            "description": "Run lint/format command (default: ruff check).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "cmd": {"type": "string", "description": "Lint command", "default": "ruff check"},
+                    "timeout": {"type": "integer", "description": "Timeout seconds (default 120).", "default": 120},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "run_type_check",
+            "description": "Run type checks (default: mypy .).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "cmd": {"type": "string", "description": "Type check command", "default": "mypy ."},
+                    "timeout": {"type": "integer", "description": "Timeout seconds (default 120).", "default": 120},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "code_search",
+            "description": "Ripgrep code search with context.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Pattern to search for."},
+                    "glob": {"type": "string", "description": "Optional glob, e.g., '*.py'."},
+                    "context": {"type": "integer", "description": "Context lines (default 2).", "default": 2},
+                    "max_results": {"type": "integer", "description": "Max matches (default 20).", "default": 20},
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "python_exec",
+            "description": "Execute Python code in a sandbox with optional files/requirements.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "code": {"type": "string", "description": "Python code to execute."},
+                    "timeout": {"type": "number", "description": "Timeout seconds.", "default": 10},
+                    "persist": {"type": "boolean", "description": "Persist session state.", "default": False},
+                    "globals": {"type": "boolean", "description": "Allow full builtins/globals.", "default": True},
+                    "files": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "path": {"type": "string"},
+                                "content": {"type": "string"},
+                            },
+                            "required": ["path", "content"],
+                        },
+                    },
+                    "requirements": {"type": "array", "items": {"type": "string"}},
+                    "session_id": {"type": "string", "description": "Optional session id when persist=true."},
+                    "max_memory_mb": {"type": "integer", "description": "Memory limit MB."}
+                },
+                "required": ["code"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "docker_ps",
+            "description": "List running docker containers.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "docker_images",
+            "description": "List local docker images.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "docker_logs",
+            "description": "Fetch docker logs for a container.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "container": {"type": "string", "description": "Container name or ID."},
+                    "tail": {"type": "integer", "description": "Number of lines from the end (default 100).", "default": 100},
+                },
+                "required": ["container"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "docker_stop",
+            "description": "Stop a docker container by name/ID.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "container": {"type": "string", "description": "Container name or ID."},
+                },
+                "required": ["container"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "docker_compose",
+            "description": "Run a docker-compose command in the current directory (default: ps).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "args": {"type": "string", "description": "Arguments to pass to docker-compose (default: ps).", "default": "ps"},
+                    "timeout": {"type": "integer", "description": "Timeout seconds (default 120).", "default": 120},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "git_status",
+            "description": "Show git status (short).",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "git_diff",
+            "description": "Show git diff for working tree (optional path).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Optional path to diff."},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "git_log",
+            "description": "Show recent git log entries.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "limit": {"type": "integer", "description": "Number of commits (default 5).", "default": 5},
+                    "oneline": {"type": "boolean", "description": "Show oneline format (default true).", "default": True},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "pip_install",
+            "description": "Install a Python package into the current environment using pip.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Package spec, e.g., requests==2.32.3"},
+                    "timeout": {"type": "integer", "description": "Timeout seconds (default 120).", "default": 120},
+                },
+                "required": ["name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "npm_install",
+            "description": "Install an npm package (global disabled; runs in CWD).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Package name (optionally with version @)."},
+                    "timeout": {"type": "integer", "description": "Timeout seconds (default 120).", "default": 120},
+                },
+                "required": ["name"],
             },
         },
     },
@@ -332,6 +550,20 @@ def add_chat(subparsers):
     parser.add_argument("--resume", help="Path to a previous transcript JSONL to preload history")
     parser.add_argument("--transcript-dir", help="Directory to write transcripts (default data/sessions)")
     parser.add_argument("--no-transcript", action="store_true", help="Disable transcript logging")
+    parser.add_argument(
+        "--show-thinking",
+        dest="show_thinking",
+        action="store_true",
+        help="Print a thinking notice before responses (default on)",
+    )
+    parser.add_argument(
+        "--no-show-thinking",
+        dest="show_thinking",
+        action="store_false",
+        help="Disable thinking notice",
+    )
+    parser.set_defaults(show_thinking=True)
+    parser.add_argument("--list-transcripts", action="store_true", help="List available transcripts and exit")
     parser.set_defaults(func=run_chat)
 
 
@@ -341,12 +573,16 @@ def run_chat(args, settings):
     convo = Conversation()
     transcript = None
 
+    transcript_dir = Path(args.transcript_dir or settings.data_dir / "sessions")
+    if args.list_transcripts:
+        _print_transcripts(transcript_dir)
+        return
+
     if args.resume:
         convo = _load_transcript(args.resume, logger)
     convo.add_system(args.system)
 
     if not args.no_transcript:
-        transcript_dir = Path(args.transcript_dir or settings.data_dir / "sessions")
         transcript_dir.mkdir(parents=True, exist_ok=True)
         ts = datetime.now().strftime("%Y%m%d-%H%M%S")
         transcript = (transcript_dir / f"session-{ts}.jsonl").resolve()
@@ -370,9 +606,16 @@ def run_chat(args, settings):
         if transcript:
             _append_transcript(transcript, {"role": "user", "content": user_input})
 
+        stop_event = None
+        spinner_thread = None
         try:
             start = time.perf_counter()
-            handle_chat_turn(client, convo, settings, transcript, logger)
+            if args.show_thinking:
+                stop_event = threading.Event()
+                spinner_thread = threading.Thread(target=_spinner, args=(stop_event, start), daemon=True)
+                spinner_thread.start()
+
+            handle_chat_turn(client, convo, settings, transcript, logger, stop_event=stop_event)
             elapsed = time.perf_counter() - start
             print(f"(completed in {elapsed:.2f}s)")
         except KeyboardInterrupt:
@@ -381,9 +624,16 @@ def run_chat(args, settings):
             logger.error("Chat failed: %s", exc)
             print(f"Error talking to model: {exc}")
             break
+        finally:
+            if stop_event:
+                stop_event.set()
+            if spinner_thread:
+                spinner_thread.join(timeout=1)
+                sys.stderr.write("\r")
+                sys.stderr.flush()
 
 
-def handle_chat_turn(client: LLMClient, convo: Conversation, settings, transcript, logger):
+def handle_chat_turn(client: LLMClient, convo: Conversation, settings, transcript, logger, stop_event=None):
     """Send a turn, execute any tool calls, then stream the assistant reply."""
     # First pass: let the model decide on tool use (non-stream for tool detection).
     resp = client.chat(convo.history(), stream=False, tools=TOOLS, tool_choice="auto")
@@ -432,6 +682,36 @@ def handle_chat_turn(client: LLMClient, convo: Conversation, settings, transcrip
                 result = _handle_install_package(tool_call.function.arguments)
             elif name == "web_search":
                 result = _handle_web_search(tool_call.function.arguments)
+            elif name == "run_tests":
+                result = _handle_run_tests(tool_call.function.arguments)
+            elif name == "run_lint":
+                result = _handle_run_lint(tool_call.function.arguments)
+            elif name == "run_type_check":
+                result = _handle_run_type_check(tool_call.function.arguments)
+            elif name == "code_search":
+                result = _handle_code_search(tool_call.function.arguments)
+            elif name == "pip_install":
+                result = _handle_pip_install(tool_call.function.arguments)
+            elif name == "npm_install":
+                result = _handle_npm_install(tool_call.function.arguments)
+            elif name == "docker_ps":
+                result = _handle_docker_ps()
+            elif name == "docker_images":
+                result = _handle_docker_images()
+            elif name == "docker_logs":
+                result = _handle_docker_logs(tool_call.function.arguments)
+            elif name == "docker_stop":
+                result = _handle_docker_stop(tool_call.function.arguments)
+            elif name == "docker_compose":
+                result = _handle_docker_compose(tool_call.function.arguments)
+            elif name == "git_status":
+                result = _handle_git_status()
+            elif name == "git_diff":
+                result = _handle_git_diff(tool_call.function.arguments)
+            elif name == "git_log":
+                result = _handle_git_log(tool_call.function.arguments)
+            elif name == "python_exec":
+                result = _handle_python_exec(tool_call.function.arguments, settings)
             else:
                 result = f"Unsupported tool: {name}"
             convo.add_tool_result(tool_call.id, result)
@@ -913,6 +1193,37 @@ def _load_transcript(path_str: str, logger) -> Conversation:
     return convo
 
 
+def _print_transcripts(transcript_dir: Path):
+    if not transcript_dir.exists():
+        print(f"No transcript directory found at {transcript_dir}")
+        return
+    files = sorted(transcript_dir.glob("session-*.jsonl"))
+    if not files:
+        print(f"No transcripts found in {transcript_dir}")
+        return
+    print(f"Transcripts in {transcript_dir}:")
+    for f in files:
+        print(f"- {f.name}")
+
+
+def _spinner(stop_event: threading.Event, start_time: float):
+    chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+    i = 0
+    while not stop_event.is_set():
+        dots = "." * ((i % 3) + 1)
+        elapsed = time.perf_counter() - start_time
+        msg = f"\r{elapsed:5.1f}s thinking{dots} {chars[i % len(chars)]} "
+        sys.stderr.write(msg)
+        sys.stderr.flush()
+        time.sleep(0.15)
+        i += 1
+
+
+def _status(message: str):
+    sys.stderr.write(f"\n{message}\n")
+    sys.stderr.flush()
+
+
 def _handle_run_python(raw_args: str) -> str:
     try:
         args = json.loads(raw_args or "{}")
@@ -1107,8 +1418,211 @@ def _handle_run_powershell(raw_args: str) -> str:
         parts.append(f"stderr:\n{err}")
     return "\n".join(parts)
 
+
+def _handle_run_tests(raw_args: str) -> str:
+    try:
+        args = json.loads(raw_args or "{}")
+    except json.JSONDecodeError as exc:
+        return f"Invalid arguments for run_tests: {exc}"
+    cmd = args.get("cmd", "pytest")
+    timeout = int(args.get("timeout", 120))
+    return _run_command(cmd, timeout, label="run_tests")
+
+
+def _handle_run_lint(raw_args: str) -> str:
+    try:
+        args = json.loads(raw_args or "{}")
+    except json.JSONDecodeError as exc:
+        return f"Invalid arguments for run_lint: {exc}"
+    cmd = args.get("cmd", "ruff check")
+    timeout = int(args.get("timeout", 120))
+    return _run_command(cmd, timeout, label="run_lint")
+
+
+def _handle_run_type_check(raw_args: str) -> str:
+    try:
+        args = json.loads(raw_args or "{}")
+    except json.JSONDecodeError as exc:
+        return f"Invalid arguments for run_type_check: {exc}"
+    cmd = args.get("cmd", "mypy .")
+    timeout = int(args.get("timeout", 120))
+    return _run_command(cmd, timeout, label="run_type_check")
+
+
+def _handle_pip_install(raw_args: str) -> str:
+    try:
+        args = json.loads(raw_args or "{}")
+    except json.JSONDecodeError as exc:
+        return f"Invalid arguments for pip_install: {exc}"
+    name = args.get("name")
+    timeout = int(args.get("timeout", 120))
+    if not name:
+        return "pip_install failed: 'name' is required."
+    cmd = f"pip install {name}"
+    return _run_command(cmd, timeout, label="pip_install")
+
+
+def _handle_npm_install(raw_args: str) -> str:
+    try:
+        args = json.loads(raw_args or "{}")
+    except json.JSONDecodeError as exc:
+        return f"Invalid arguments for npm_install: {exc}"
+    name = args.get("name")
+    timeout = int(args.get("timeout", 120))
+    if not name:
+        return "npm_install failed: 'name' is required."
+    cmd = f"npm install {name}"
+    return _run_command(cmd, timeout, label="npm_install")
+
+
+def _handle_docker_ps() -> str:
+    return _run_command("docker ps", 30, label="docker_ps")
+
+
+def _handle_docker_images() -> str:
+    return _run_command("docker images", 30, label="docker_images")
+
+
+def _handle_docker_logs(raw_args: str) -> str:
+    try:
+        args = json.loads(raw_args or "{}")
+    except json.JSONDecodeError as exc:
+        return f"Invalid arguments for docker_logs: {exc}"
+    container = args.get("container")
+    tail = int(args.get("tail", 100))
+    if not container:
+        return "docker_logs failed: 'container' is required."
+    cmd = f"docker logs --tail {tail} {container}"
+    return _run_command(cmd, 60, label="docker_logs")
+
+
+def _handle_docker_stop(raw_args: str) -> str:
+    try:
+        args = json.loads(raw_args or "{}")
+    except json.JSONDecodeError as exc:
+        return f"Invalid arguments for docker_stop: {exc}"
+    container = args.get("container")
+    if not container:
+        return "docker_stop failed: 'container' is required."
+    cmd = f"docker stop {container}"
+    return _run_command(cmd, 60, label="docker_stop")
+
+
+def _handle_docker_compose(raw_args: str) -> str:
+    try:
+        args = json.loads(raw_args or "{}")
+    except json.JSONDecodeError as exc:
+        return f"Invalid arguments for docker_compose: {exc}"
+    compose_args = args.get("args", "ps")
+    timeout = int(args.get("timeout", 120))
+    cmd = f"docker-compose {compose_args}"
+    return _run_command(cmd, timeout, label="docker_compose")
+
+
+def _handle_git_status() -> str:
+    return _run_command("git status -sb", 30, label="git_status")
+
+
+def _handle_git_diff(raw_args: str) -> str:
+    try:
+        args = json.loads(raw_args or "{}")
+    except json.JSONDecodeError as exc:
+        return f"Invalid arguments for git_diff: {exc}"
+    path = args.get("path")
+    cmd = "git diff"
+    if path:
+        cmd = f"git diff -- {path}"
+    return _run_command(cmd, 60, label="git_diff")
+
+
+def _handle_git_log(raw_args: str) -> str:
+    try:
+        args = json.loads(raw_args or "{}")
+    except json.JSONDecodeError as exc:
+        return f"Invalid arguments for git_log: {exc}"
+    limit = int(args.get("limit", 5))
+    oneline = bool(args.get("oneline", True))
+    fmt = "--oneline" if oneline else ""
+    cmd = f"git log {fmt} -{limit}".strip()
+    return _run_command(cmd, 60, label="git_log")
+
+
+def _handle_python_exec(raw_args: str, settings) -> str:
+    try:
+        args = json.loads(raw_args or "{}")
+    except json.JSONDecodeError as exc:
+        return f"Invalid arguments for python_exec: {exc}"
+
+    code = args.get("code")
+    if not code:
+        return "python_exec failed: 'code' is required."
+
+    timeout = float(args.get("timeout", 10))
+    persist = bool(args.get("persist", False))
+    globals_mode = bool(args.get("globals", True))
+    files = args.get("files") or []
+    requirements = args.get("requirements") or []
+    session_id = args.get("session_id")
+    max_memory_mb = args.get("max_memory_mb")
+
+    executor = PythonExecutor(settings)
+    result = executor.execute(
+        code=code,
+        timeout=timeout,
+        persist=persist,
+        globals_mode=globals_mode,
+        files=files,
+        requirements=requirements,
+        session_id=session_id,
+        max_memory_mb=max_memory_mb,
+    )
+    exc = result.exception
+    exc_text = ""
+    if exc:
+        exc_text = f"\nException: {exc}"
+    return (
+        f"python_exec stdout:\n{result.stdout}"
+        f"\npython_exec stderr:\n{result.stderr}"
+        f"\nresult: {result.result}"
+        f"\nlocals: {result.locals}"
+        f"\nfiles_written: {result.files_written}"
+        f"\nexecution_time: {result.execution_time:.3f}s"
+        f"{exc_text}"
+    )
+
+
+def _run_command(cmd: str, timeout: int, label: str) -> str:
+    log = logging.getLogger(__name__)
+    log.info("%s start cmd=%s timeout=%s", label, cmd, timeout)
+    try:
+        result = subprocess.run(
+            ["/bin/bash", "-lc", cmd],
+            capture_output=True,
+            text=True,
+            cwd=Path.cwd(),
+            timeout=timeout,
+        )
+    except FileNotFoundError:
+        log.warning("%s failed: command not found", label)
+        return f"{label} failed: command not found."
+    except Exception as exc:
+        log.warning("%s failed: %s", label, exc)
+        return f"{label} failed: {exc}"
+
+    out = result.stdout.strip()
+    err = result.stderr.strip()
+    status = result.returncode
+    parts = [f"{label} exit={status}", f"cmd: {cmd}"]
+    log.info("%s exit=%s", label, status)
+    if out:
+        parts.append(f"stdout:\n{out}")
+    if err:
+        parts.append(f"stderr:\n{err}")
+    return "\n".join(parts)
 def _handle_web_search(raw_args: str) -> str:
     from ...tools.web_search import serpapi_search, fetch_page, overlap_score, summarize
+    log = logging.getLogger(__name__)
+    start_time = time.perf_counter()
     try:
         args = json.loads(raw_args or "{}")
     except json.JSONDecodeError as exc:
@@ -1117,15 +1631,20 @@ def _handle_web_search(raw_args: str) -> str:
     query = args.get("query")
     num = max(1, min(int(args.get("num", 5)), 10))
     site = args.get("site")
-    fetch_n = max(0, min(int(args.get("fetch", 0)), 3))
+    fetch_n = max(0, min(int(args.get("fetch", 1)), 3))
+    max_bytes = int(args.get("max_bytes", 1_000_000))
+    max_fetch_time = int(args.get("max_fetch_time", 15))
     if not query:
         return "web_search failed: 'query' is required."
 
+    log.info("web_search start query=%s num=%s site=%s fetch=%s", query, num, site, fetch_n)
     result = serpapi_search(query, num=num, site=site)
     if "error" in result:
         return f"web_search failed: {result['error']}"
 
     results = result.get("results", [])
+    log.info("web_search: %d results before rerank", len(results))
+    _status(f"web_search: search done in {time.perf_counter()-start_time:.2f}s; {len(results)} results; fetching {min(fetch_n,len(results)) if fetch_n else 0}")
     # Rerank by simple overlap
     reranked = sorted(results, key=lambda x: overlap_score(x.get("snippet", "") or "", query), reverse=True)
     lines = []
@@ -1135,25 +1654,43 @@ def _handle_web_search(raw_args: str) -> str:
         link = item.get("link")
         if not link:
             continue
-        content = fetch_page(link)
+        content = fetch_page(link, max_bytes=max_bytes, timeout=max_fetch_time)
+        if not content:
+            fetched.append({"link": link, "summary": "(skipped: too large or failed)"})
+            continue
         summary = summarize(content)
         fetched.append({"link": link, "summary": summary})
+    if fetch_n:
+        _status(f"web_search: fetched {len(fetched)}/{len(to_fetch)} links in {time.perf_counter()-start_time:.2f}s; formatting…")
+    else:
+        _status(f"web_search: skipping fetch (fetch=0); formatting results")
 
-    for idx, item in enumerate(reranked, 1):
-        title = item.get("title") or "(no title)"
-        link = item.get("link") or "(no link)"
-        snippet = item.get("snippet") or ""
-        lines.append(f"{idx}. {title}\n   {link}\n   {snippet}")
+    try:
+        for idx, item in enumerate(reranked, 1):
+            title = item.get("title") or "(no title)"
+            link = item.get("link") or "(no link)"
+            snippet = item.get("snippet") or ""
+            score = overlap_score(snippet, query)
+            score_str = f" (score {score:.2f})" if score else ""
+            if link and link != "(no link)":
+                lines.append(f"{idx}. [{title}]({link}){score_str}\n   {snippet}")
+            else:
+                lines.append(f"{idx}. {title}{score_str}\n   {snippet}")
 
-    if fetched:
-        lines.append("\nSummaries:")
-        for f in fetched:
-            lines.append(f"- {f['link']}\n  {f['summary']}")
+        if fetched:
+            lines.append("\nSummaries:")
+            for f in fetched:
+                lines.append(f"- {f['link']}\n  {f['summary']}")
+    except KeyboardInterrupt:
+        log.info("web_search cancelled by user")
+        return "web_search cancelled."
 
     header = f"web_search results for '{query}'"
     if site:
         header += f" (site:{site})"
-    return header + ":\n" + ("\n".join(lines) if lines else "(no results)")
+    if lines:
+        return header + ":\n" + "\n".join(lines)
+    return header + ":\n(no results)"
 
 
 def _handle_install_package(raw_args: str) -> str:
@@ -1245,6 +1782,48 @@ def _handle_search_text(raw_args: str) -> str:
         return f"search_text: no matches for '{query}'{f' with glob {glob}' if glob else ''}."
     lines = output.splitlines()[:max_results]
     return "search_text results:\n" + "\n".join(lines)
+
+
+def _handle_code_search(raw_args: str) -> str:
+    try:
+        args = json.loads(raw_args or "{}")
+    except json.JSONDecodeError as exc:
+        return f"Invalid arguments for code_search: {exc}"
+
+    query = args.get("query")
+    glob = args.get("glob")
+    context = int(args.get("context", 2))
+    max_results = int(args.get("max_results", 20))
+    if not query:
+        return "code_search failed: 'query' is required."
+
+    base = Path.cwd().resolve()
+    cmd = [
+        "rg",
+        "--no-heading",
+        f"-C{context}",
+        "--line-number",
+        "--color",
+        "never",
+        "--max-count",
+        str(max_results),
+        query,
+        ".",
+    ]
+    if glob:
+        cmd.extend(["--glob", glob])
+    try:
+        proc = subprocess.run(cmd, cwd=base, capture_output=True, text=True, timeout=15)
+    except FileNotFoundError:
+        return "code_search failed: ripgrep (rg) not available."
+    except Exception as exc:
+        return f"code_search failed: {exc}"
+
+    output = proc.stdout.strip()
+    if not output:
+        return f"code_search: no matches for '{query}'{f' with glob {glob}' if glob else ''}."
+    lines = output.splitlines()[:max_results]
+    return "code_search results:\n" + "\n".join(lines)
 
 
 def _handle_search_index(raw_args: str, settings, llm_client) -> str:

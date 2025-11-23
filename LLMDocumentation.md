@@ -23,11 +23,12 @@
 ## 3) Commands & Tools
 - `jay-agent chat`
   - File ops: `create_file`, `write_file` (overwrite/append), `read_file` (head/tail/range with max chars), `copy_path`, `rename_path`, `delete_path` (confirm + optional recursive), `rename_all` (pattern), `rename_semantic` (content-based), `list_dir`, `list_tree`.
-  - Search: `search_text` (ripgrep), `search_index` (vector RAG index), `web_search` (SerpAPI; requires `JAY_SERPAPI_KEY`, supports site filter, result count, optional fetch/summarize top links).
-  - Exec local: `run_shell(command)` (blocks sudo/apt-get), `run_powershell(command)` (if pwsh/powershell present), `run_python(path, args=[])`.
+  - Search: `search_text` (ripgrep), `search_index` (vector RAG index), `web_search` (SerpAPI; requires `JAY_SERPAPI_KEY`, supports site filter, result count, optional fetch/summarize top links with max_bytes/max_fetch_time guards).
+  - Exec local: `run_shell(command)` (blocks sudo/apt-get), `run_powershell(command)` (if pwsh/powershell present), `run_python(path, args=[])`, `python_exec(code, timeout?, persist?, globals?, files?, requirements?, session_id?, max_memory_mb?)`, `run_tests(cmd?, timeout?)`, `run_lint(cmd?, timeout?)`, `run_type_check(cmd?, timeout?)`, `pip_install(name, timeout?)`, `npm_install(name, timeout?)`, docker helpers (`docker_ps`, `docker_images`, `docker_logs(container, tail?)`, `docker_stop(container)`, `docker_compose(args?, timeout?)`), git helpers (`git_status`, `git_diff(path?)`, `git_log(limit?, oneline?)`).
   - Exec remote: `run_ssh(target, command, port?, identity?, user?, password?)` (password requires `sshpass`; prefers keys; warns if sshpass missing).
-  - Install: `install_package(name)` (allowlisted Homebrew installs: sshpass, ripgrep/rg, powershell/pwsh; errors if brew missing).
+  - Install: `install_package(name)` (allowlisted Homebrew installs: sshpass, ripgrep/rg, powershell/pwsh; errors if brew missing); `pip_install`, `npm_install` for package managers.
   - Network: `ping_host(host, count?, timeout?)`.
+  - Code search: `code_search(query, glob?, context?, max_results?)` (ripgrep with context).
   - Flags: `--system "..."`, `--resume <transcript.jsonl>`, `--transcript-dir <dir>` (default `data/sessions`), `--no-transcript`.
 - `jay-agent ask "question"`: stub one-shot.
 - `jay-agent index [path]`: chunk + embed allowed files under `path` (default `.`), save vector index + metadata under `./data/index.*` (npy + meta.json).

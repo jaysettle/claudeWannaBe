@@ -5,10 +5,11 @@ Terminal-first agent CLI that talks to an OpenAI-compatible endpoint (default Ol
 ## Status
 - Interactive chat wired to call tools:
   - File ops: `create_file`, `write_file` (overwrite/append), `read_file` (head/tail/range), `copy_path`, `rename_path`, `delete_path` (confirm + optional recursive), `rename_all` (pattern), `rename_semantic` (content-based), `list_dir`, `list_tree`.
-  - Search: `search_text` (ripgrep), `search_index` (RAG index), `web_search` (SerpAPI; needs `JAY_SERPAPI_KEY`, supports site filter, fetch/summarize top links).
-  - Exec: `run_shell` (bash), `run_powershell` (local PowerShell), `run_python` (CWD), `run_ssh` (remote; key or password with sshpass).
-  - Install: `install_package` (allowlist via Homebrew: sshpass, ripgrep, powershell). run_shell blocks sudo/apt-get; use install_package or run manually.
+  - Search: `search_text` (ripgrep), `search_index` (RAG index), `web_search` (SerpAPI; needs `JAY_SERPAPI_KEY`, supports site filter, fetch/summarize top links with max_bytes/max_fetch_time guards).
+  - Exec: `run_shell` (bash), `run_powershell` (local PowerShell), `run_python` (CWD), `python_exec` (sandboxed code execution with files/requirements/persist/memory limit), `run_ssh` (remote; key or password with sshpass), `run_tests`, `run_lint`, `run_type_check`, `pip_install`, `npm_install`, docker helpers (`docker_ps`, `docker_images`, `docker_logs`, `docker_stop`, `docker_compose`), git helpers (`git_status`, `git_diff`, `git_log`).
+  - Install: `install_package` (allowlist via Homebrew: sshpass, ripgrep, powershell); `pip_install` and `npm_install` for package managers. run_shell blocks sudo/apt-get; use install_package or run manually.
   - Network: `ping_host` (reachability checks).
+  - Code search: `code_search` (ripgrep with context).
 - RAG indexing/search: `jay-agent index [path]` builds a vector index (embeddings + metadata) at `./data/index.*`; `jay-agent search "query"` searches it with similarity.
 - Logging goes to `data/logs/agent.log` relative to the working directory.
 - Chat transcripts (jsonl) can be saved to `data/sessions/` (configurable) and resumed.

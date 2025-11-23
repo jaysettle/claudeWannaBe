@@ -16,6 +16,11 @@ build/
 
 # Logs and data
 data/logs/
+data/sessions/
 
 # OS junk
 .DS_Store
+
+# Env files
+.env
+*.env

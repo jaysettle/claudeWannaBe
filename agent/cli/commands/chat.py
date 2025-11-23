@@ -266,6 +266,23 @@ TOOLS = [
     {
         "type": "function",
         "function": {
+            "name": "run_bash_script",
+            "description": "Run a bash script (multi-line) with optional env/cwd.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "script": {"type": "string", "description": "Bash script content."},
+                    "timeout": {"type": "integer", "description": "Timeout seconds (default 60).", "default": 60},
+                    "cwd": {"type": "string", "description": "Optional working directory."},
+                    "env": {"type": "object", "description": "Optional environment variables."}
+                },
+                "required": ["script"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "ping_host",
             "description": "Ping a host/IP with a limited count to check reachability.",
             "parameters": {
@@ -712,6 +729,8 @@ def handle_chat_turn(client: LLMClient, convo: Conversation, settings, transcrip
                 result = _handle_git_log(tool_call.function.arguments)
             elif name == "python_exec":
                 result = _handle_python_exec(tool_call.function.arguments, settings)
+            elif name == "run_bash_script":
+                result = _handle_run_bash_script(tool_call.function.arguments)
             else:
                 result = f"Unsupported tool: {name}"
             convo.add_tool_result(tool_call.id, result)
@@ -1347,6 +1366,50 @@ def _handle_run_shell(raw_args: str) -> str:
     err = result.stderr.strip()
     status = result.returncode
     parts = [f"run_shell exit={status}"]
+    if out:
+        parts.append(f"stdout:\n{out}")
+    if err:
+        parts.append(f"stderr:\n{err}")
+    return "\n".join(parts)
+
+
+def _handle_run_bash_script(raw_args: str) -> str:
+    try:
+        args = json.loads(raw_args or "{}")
+    except json.JSONDecodeError as exc:
+        return f"Invalid arguments for run_bash_script: {exc}"
+
+    script = args.get("script")
+    timeout = int(args.get("timeout", 60))
+    cwd = args.get("cwd") or None
+    env_overrides = args.get("env") or {}
+    if not script:
+        return "run_bash_script failed: 'script' is required."
+
+    lowered = script.lower()
+    if lowered.strip().startswith("sudo ") or " apt-get" in lowered:
+        return "run_bash_script blocked: disallowed sudo/apt-get. Run manually if intended."
+
+    env = os.environ.copy()
+    for k, v in env_overrides.items():
+        env[str(k)] = str(v)
+
+    try:
+        result = subprocess.run(
+            ["/bin/bash", "-lc", script],
+            capture_output=True,
+            text=True,
+            cwd=cwd or Path.cwd(),
+            env=env,
+            timeout=timeout,
+        )
+    except Exception as exc:
+        return f"run_bash_script failed: {exc}"
+
+    out = result.stdout.strip()
+    err = result.stderr.strip()
+    status = result.returncode
+    parts = [f"run_bash_script exit={status}"]
     if out:
         parts.append(f"stdout:\n{out}")
     if err:

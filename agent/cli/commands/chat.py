@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import time
 import threading
+import tempfile
 from pathlib import Path
 from datetime import datetime
 
@@ -327,6 +328,250 @@ TOOLS = [
                     "timeout": {"type": "integer", "description": "Timeout seconds (default 30).", "default": 30},
                 },
                 "required": ["command"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "edit_file",
+            "description": "Replace exact string match in a file. Fails if old_string is not unique unless replace_all=true.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Relative or absolute path to the file to edit"},
+                    "old_string": {"type": "string", "description": "Exact string to find and replace"},
+                    "new_string": {"type": "string", "description": "String to replace old_string with"},
+                    "replace_all": {"type": "boolean", "description": "Replace all occurrences (default false)", "default": False},
+                },
+                "required": ["path", "old_string", "new_string"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "http_request",
+            "description": "Make an HTTP request with optional headers/body and size/time limits.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "Full URL (http:// or https://)"},
+                    "method": {
+                        "type": "string",
+                        "enum": ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
+                        "description": "HTTP method",
+                        "default": "GET",
+                    },
+                    "headers": {"type": "object", "description": "HTTP headers", "default": {}},
+                    "body": {"type": "string", "description": "Optional request body"},
+                    "timeout": {"type": "integer", "description": "Timeout seconds (default 30, max 60)", "default": 30},
+                    "max_response_size": {"type": "integer", "description": "Max response bytes (default 1MB)", "default": 1048576},
+                },
+                "required": ["url"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "git_add",
+            "description": "Stage files for git commit.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "paths": {"type": "array", "items": {"type": "string"}, "description": "File paths to stage"},
+                    "all": {"type": "boolean", "description": "Stage all changes (git add -A)", "default": False},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "git_commit",
+            "description": "Create a git commit with staged changes.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "message": {"type": "string", "description": "Commit message"},
+                    "amend": {"type": "boolean", "description": "Amend previous commit", "default": False},
+                },
+                "required": ["message"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "git_push",
+            "description": "Push commits to a remote repository.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "remote": {"type": "string", "description": "Remote name", "default": "origin"},
+                    "branch": {"type": "string", "description": "Branch name (defaults to current)"},
+                    "force": {"type": "boolean", "description": "Force push (dangerous)", "default": False},
+                    "set_upstream": {"type": "boolean", "description": "Set upstream tracking (-u)", "default": False},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "ask_user",
+            "description": "Prompt the user for input during execution.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "question": {"type": "string", "description": "Question to ask"},
+                    "options": {"type": "array", "items": {"type": "string"}, "description": "Optional list of choices"},
+                    "default": {"type": "string", "description": "Default answer if user presses Enter"},
+                },
+                "required": ["question"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "glob_files",
+            "description": "Find files matching a glob pattern under the current working directory.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "pattern": {"type": "string", "description": "Glob pattern, e.g., '**/*.py'"},
+                    "max_results": {"type": "integer", "description": "Max results (default 200).", "default": 200},
+                },
+                "required": ["pattern"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "read_env",
+            "description": "Read an environment variable.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Environment variable name"},
+                    "default": {"type": "string", "description": "Default if not set"},
+                },
+                "required": ["name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "system_info",
+            "description": "Show basic system info (OS, CPU, memory, disk).",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "which_command",
+            "description": "Locate an executable in PATH.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Command to locate"},
+                },
+                "required": ["name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "find_symbol",
+            "description": "Find function/class/variable definitions using ripgrep patterns.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "symbol_name": {"type": "string", "description": "Symbol to find"},
+                    "symbol_type": {
+                        "type": "string",
+                        "enum": ["function", "class", "variable", "any"],
+                        "description": "Type of symbol",
+                        "default": "any",
+                    },
+                    "language": {
+                        "type": "string",
+                        "enum": ["python", "javascript", "typescript", "go", "rust", "java", "any"],
+                        "description": "Language to tailor patterns",
+                        "default": "any",
+                    },
+                    "max_results": {"type": "integer", "description": "Max results", "default": 20},
+                },
+                "required": ["symbol_name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "apply_patch",
+            "description": "Apply a unified diff patch to the current repo using git apply.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "patch": {"type": "string", "description": "Unified diff patch content"},
+                },
+                "required": ["patch"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "run_background",
+            "description": "Run a command in the background and return PID.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "command": {"type": "string", "description": "Command to run"},
+                    "log_file": {"type": "string", "description": "Optional log file path"},
+                },
+                "required": ["command"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "db_query",
+            "description": "Execute a SQL query (read-only by default).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "connection_string": {"type": "string", "description": "DB connection string"},
+                    "query": {"type": "string", "description": "SQL query"},
+                    "allow_write": {"type": "boolean", "description": "Allow write operations", "default": False},
+                    "max_rows": {"type": "integer", "description": "Max rows to return", "default": 100},
+                },
+                "required": ["connection_string", "query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "generate_tests",
+            "description": "Generate test cases for a function using the LLM (writes a test file).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "function_name": {"type": "string", "description": "Function to test"},
+                    "file_path": {"type": "string", "description": "Source file path"},
+                    "test_file_path": {"type": "string", "description": "Output test file path"},
+                    "framework": {"type": "string", "enum": ["pytest", "unittest"], "default": "pytest"},
+                },
+                "required": ["function_name", "file_path"],
             },
         },
     },
@@ -731,6 +976,36 @@ def handle_chat_turn(client: LLMClient, convo: Conversation, settings, transcrip
                 result = _handle_python_exec(tool_call.function.arguments, settings)
             elif name == "run_bash_script":
                 result = _handle_run_bash_script(tool_call.function.arguments)
+            elif name == "edit_file":
+                result = _handle_edit_file(tool_call.function.arguments)
+            elif name == "http_request":
+                result = _handle_http_request(tool_call.function.arguments)
+            elif name == "git_add":
+                result = _handle_git_add(tool_call.function.arguments)
+            elif name == "git_commit":
+                result = _handle_git_commit(tool_call.function.arguments)
+            elif name == "git_push":
+                result = _handle_git_push(tool_call.function.arguments)
+            elif name == "ask_user":
+                result = _handle_ask_user(tool_call.function.arguments)
+            elif name == "glob_files":
+                result = _handle_glob_files(tool_call.function.arguments)
+            elif name == "read_env":
+                result = _handle_read_env(tool_call.function.arguments)
+            elif name == "system_info":
+                result = _handle_system_info()
+            elif name == "which_command":
+                result = _handle_which_command(tool_call.function.arguments)
+            elif name == "find_symbol":
+                result = _handle_find_symbol(tool_call.function.arguments)
+            elif name == "apply_patch":
+                result = _handle_apply_patch(tool_call.function.arguments)
+            elif name == "run_background":
+                result = _handle_run_background(tool_call.function.arguments)
+            elif name == "db_query":
+                result = _handle_db_query(tool_call.function.arguments)
+            elif name == "generate_tests":
+                result = _handle_generate_tests(tool_call.function.arguments, client, settings)
             else:
                 result = f"Unsupported tool: {name}"
             convo.add_tool_result(tool_call.id, result)
@@ -1415,6 +1690,607 @@ def _handle_run_bash_script(raw_args: str) -> str:
     if err:
         parts.append(f"stderr:\n{err}")
     return "\n".join(parts)
+
+
+def _handle_edit_file(raw_args: str) -> str:
+    try:
+        args = json.loads(raw_args or "{}")
+    except json.JSONDecodeError as exc:
+        return f"Invalid arguments for edit_file: {exc}"
+
+    path_arg = args.get("path")
+    old_string = args.get("old_string")
+    new_string = args.get("new_string")
+    replace_all = bool(args.get("replace_all", False))
+
+    if not path_arg or old_string is None or new_string is None:
+        return "edit_file failed: 'path', 'old_string', and 'new_string' are required."
+    if old_string == new_string:
+        return "edit_file failed: old_string and new_string are identical."
+
+    base, target, err = _resolve_path(path_arg)
+    if err:
+        return f"edit_file blocked: {err}"
+    if not target.exists():
+        return f"edit_file failed: file not found ({target.relative_to(base)})."
+    if target.is_dir():
+        return "edit_file failed: target is a directory."
+
+    try:
+        content = target.read_text(encoding="utf-8")
+    except Exception as exc:
+        return f"edit_file failed to read file: {exc}"
+
+    count = content.count(old_string)
+    if count == 0:
+        return f"edit_file failed: old_string not found in {target.relative_to(base)}."
+    if count > 1 and not replace_all:
+        return f"edit_file failed: found {count} occurrences (not unique). Set replace_all=true to replace all."
+
+    new_content = content.replace(old_string, new_string, count if replace_all else 1)
+    try:
+        target.write_text(new_content, encoding="utf-8")
+    except Exception as exc:
+        return f"edit_file failed to write file: {exc}"
+
+    occurrences = count if replace_all else 1
+    return f"edit_file success: replaced {occurrences} occurrence(s) in {target.relative_to(base)}"
+
+
+def _handle_http_request(raw_args: str) -> str:
+    try:
+        args = json.loads(raw_args or "{}")
+    except json.JSONDecodeError as exc:
+        return f"Invalid arguments for http_request: {exc}"
+
+    url = (args.get("url") or "").strip()
+    method = (args.get("method", "GET") or "GET").upper()
+    headers = args.get("headers") or {}
+    body = args.get("body")
+    timeout = int(args.get("timeout", 30))
+    max_size = int(args.get("max_response_size", 1_048_576))
+
+    if not url:
+        return "http_request failed: 'url' is required."
+    if not url.startswith(("http://", "https://")):
+        return "http_request failed: URL must start with http:// or https://"
+    if method not in {"GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"}:
+        return f"http_request failed: unsupported method '{method}'"
+
+    timeout = min(timeout, 60)
+
+    try:
+        import requests
+    except ImportError:
+        return "http_request failed: requests library not installed. Run: pip install requests"
+
+    try:
+        resp = requests.request(
+            method=method,
+            url=url,
+            headers=headers,
+            data=body,
+            timeout=timeout,
+            allow_redirects=True,
+            stream=True,
+        )
+        content_chunks = []
+        total_size = 0
+        for chunk in resp.iter_content(chunk_size=8192):
+            total_size += len(chunk)
+            if total_size > max_size:
+                return f"http_request failed: response exceeds max_response_size ({max_size} bytes)"
+            content_chunks.append(chunk)
+        content = b"".join(content_chunks).decode("utf-8", errors="replace")
+
+        lines = [
+            f"http_request {method} {url}",
+            f"Status: {resp.status_code} {resp.reason}",
+            f"Content-Length: {len(content)} bytes",
+            "",
+            "Headers:",
+        ]
+        for k, v in resp.headers.items():
+            lines.append(f"  {k}: {v}")
+        lines.append("")
+        lines.append("Body:")
+        lines.append(content[:10000])
+        if len(content) > 10000:
+            lines.append(f"... (truncated, {len(content) - 10000} more bytes)")
+        return "\n".join(lines)
+    except requests.exceptions.Timeout:
+        return f"http_request failed: request timed out after {timeout}s"
+    except requests.exceptions.RequestException as exc:
+        return f"http_request failed: {exc}"
+    except Exception as exc:
+        return f"http_request failed: {exc}"
+
+
+def _handle_git_add(raw_args: str) -> str:
+    try:
+        args = json.loads(raw_args or "{}")
+    except json.JSONDecodeError as exc:
+        return f"Invalid arguments for git_add: {exc}"
+
+    paths = args.get("paths") or []
+    add_all = bool(args.get("all", False))
+
+    if not paths and not add_all:
+        return "git_add failed: provide 'paths' or set 'all=true'."
+
+    base = Path.cwd()
+    if add_all:
+        cmd = "git add -A"
+    else:
+        for p in paths:
+            try:
+                (base / p).resolve().relative_to(base)
+            except ValueError:
+                return f"git_add blocked: path outside workspace ({p})"
+        cmd = "git add " + " ".join(f'"{p}"' for p in paths)
+
+    try:
+        res = subprocess.run(
+            ["/bin/bash", "-lc", cmd],
+            capture_output=True,
+            text=True,
+            cwd=base,
+            timeout=30,
+        )
+    except Exception as exc:
+        return f"git_add failed: {exc}"
+
+    if res.returncode != 0:
+        return f"git_add failed (exit {res.returncode}):\n{res.stderr.strip() or res.stdout.strip()}"
+
+    status = subprocess.run(
+        ["git", "diff", "--cached", "--name-status"],
+        capture_output=True,
+        text=True,
+        cwd=base,
+        timeout=10,
+    )
+    staged = status.stdout.strip() or "(no changes staged)"
+    return f"git_add success:\n{staged}"
+
+
+def _handle_git_commit(raw_args: str) -> str:
+    try:
+        args = json.loads(raw_args or "{}")
+    except json.JSONDecodeError as exc:
+        return f"Invalid arguments for git_commit: {exc}"
+
+    message = (args.get("message") or "").strip()
+    amend = bool(args.get("amend", False))
+    if not message:
+        return "git_commit failed: 'message' is required."
+
+    message_escaped = message.replace('"', '\\"')
+    amend_flag = "--amend" if amend else ""
+    cmd = f'git commit {amend_flag} -m "{message_escaped}"'
+
+    try:
+        res = subprocess.run(
+            ["/bin/bash", "-lc", cmd],
+            capture_output=True,
+            text=True,
+            cwd=Path.cwd(),
+            timeout=30,
+        )
+    except Exception as exc:
+        return f"git_commit failed: {exc}"
+
+    out = res.stdout.strip()
+    err = res.stderr.strip()
+    if res.returncode != 0:
+        return f"git_commit failed (exit {res.returncode}):\n{err or out}"
+    return f"git_commit success:\n{out or err}"
+
+
+def _handle_git_push(raw_args: str) -> str:
+    try:
+        args = json.loads(raw_args or "{}")
+    except json.JSONDecodeError as exc:
+        return f"Invalid arguments for git_push: {exc}"
+
+    remote = args.get("remote", "origin")
+    branch = args.get("branch")
+    force = bool(args.get("force", False))
+    set_upstream = bool(args.get("set_upstream", False))
+
+    base = Path.cwd()
+    if not branch:
+        branch_res = subprocess.run(
+            ["git", "branch", "--show-current"],
+            capture_output=True,
+            text=True,
+            cwd=base,
+            timeout=5,
+        )
+        branch = branch_res.stdout.strip()
+        if not branch:
+            return "git_push failed: could not determine current branch."
+
+    if force and branch in {"main", "master"}:
+        return f"git_push blocked: force push to {branch} is dangerous. Use git manually if intended."
+
+    cmd_parts = ["git", "push"]
+    if set_upstream:
+        cmd_parts.append("-u")
+    if force:
+        cmd_parts.append("--force")
+    cmd_parts.extend([remote, branch])
+    cmd = " ".join(cmd_parts)
+
+    try:
+        res = subprocess.run(
+            ["/bin/bash", "-lc", cmd],
+            capture_output=True,
+            text=True,
+            cwd=base,
+            timeout=120,
+        )
+    except Exception as exc:
+        return f"git_push failed: {exc}"
+
+    out = res.stdout.strip()
+    err = res.stderr.strip()
+    if res.returncode != 0:
+        return f"git_push failed (exit {res.returncode}):\n{err or out}"
+    return f"git_push success to {remote}/{branch}:\n{err or out}"
+
+
+def _handle_ask_user(raw_args: str) -> str:
+    try:
+        args = json.loads(raw_args or "{}")
+    except json.JSONDecodeError as exc:
+        return f"Invalid arguments for ask_user: {exc}"
+    question = (args.get("question") or "").strip()
+    options = args.get("options") or []
+    default = args.get("default")
+    if not question:
+        return "ask_user failed: 'question' is required."
+    prompt = question
+    if options:
+        prompt += f" (options: {', '.join(options)})"
+    if default:
+        prompt += f" [default: {default}]"
+    prompt += "\n> "
+    try:
+        answer = input(prompt).strip()
+    except Exception as exc:
+        return f"ask_user failed: {exc}"
+    if not answer and default is not None:
+        answer = default
+    return f"ask_user response: {answer}"
+
+
+def _handle_glob_files(raw_args: str) -> str:
+    try:
+        args = json.loads(raw_args or "{}")
+    except json.JSONDecodeError as exc:
+        return f"Invalid arguments for glob_files: {exc}"
+    pattern = args.get("pattern")
+    max_results = int(args.get("max_results", 200))
+    if not pattern:
+        return "glob_files failed: 'pattern' is required."
+    base = Path.cwd().resolve()
+    matches = []
+    try:
+        for path in base.rglob(pattern):
+            if path.is_file():
+                rel = path.relative_to(base)
+                matches.append(str(rel))
+                if len(matches) >= max_results:
+                    break
+    except Exception as exc:
+        return f"glob_files failed: {exc}"
+    if not matches:
+        return f"glob_files: no matches for pattern '{pattern}'"
+    return "glob_files results:\n" + "\n".join(matches)
+
+
+def _handle_read_env(raw_args: str) -> str:
+    try:
+        args = json.loads(raw_args or "{}")
+    except json.JSONDecodeError as exc:
+        return f"Invalid arguments for read_env: {exc}"
+    name = args.get("name")
+    default = args.get("default")
+    if not name:
+        return "read_env failed: 'name' is required."
+    # Block obviously sensitive vars
+    forbidden = {"AWS_SECRET_ACCESS_KEY", "AWS_ACCESS_KEY_ID", "GITHUB_TOKEN", "JAY_API_KEY"}
+    if name.upper() in forbidden:
+        return f"read_env blocked: '{name}' is disallowed."
+    value = os.getenv(name, default)
+    return f"read_env {name}={value}"
+
+
+def _handle_system_info() -> str:
+    try:
+        import platform
+        import psutil  # type: ignore
+    except ImportError:
+        return "system_info failed: psutil not installed. Run: pip install psutil"
+    info = {
+        "os": platform.platform(),
+        "python": sys.version.split()[0],
+        "cpu_count": os.cpu_count(),
+        "memory_gb": round(psutil.virtual_memory().total / (1024**3), 2),
+        "disk_gb": round(psutil.disk_usage("/").total / (1024**3), 2),
+    }
+    return "system_info:\n" + "\n".join(f"{k}: {v}" for k, v in info.items())
+
+
+def _handle_which_command(raw_args: str) -> str:
+    try:
+        args = json.loads(raw_args or "{}")
+    except json.JSONDecodeError as exc:
+        return f"Invalid arguments for which_command: {exc}"
+    name = (args.get("name") or "").strip()
+    if not name:
+        return "which_command failed: 'name' is required."
+    path = shutil.which(name)
+    if not path:
+        return f"which_command: '{name}' not found in PATH."
+    return f"which_command: {name} -> {path}"
+
+
+def _handle_find_symbol(raw_args: str) -> str:
+    try:
+        args = json.loads(raw_args or "{}")
+    except json.JSONDecodeError as exc:
+        return f"Invalid arguments for find_symbol: {exc}"
+    symbol_name = (args.get("symbol_name") or "").strip()
+    symbol_type = args.get("symbol_type", "any")
+    language = args.get("language", "any")
+    max_results = int(args.get("max_results", 20))
+    if not symbol_name:
+        return "find_symbol failed: 'symbol_name' is required."
+
+    patterns = []
+    if language in {"python", "any"}:
+        if symbol_type in {"function", "any"}:
+            patterns.append(f"def {symbol_name}\\(")
+        if symbol_type in {"class", "any"}:
+            patterns.append(f"class {symbol_name}[\\(:]")
+        if symbol_type in {"variable", "any"}:
+            patterns.append(f"^{symbol_name}\\s*=")
+    if language in {"javascript", "typescript", "any"}:
+        if symbol_type in {"function", "any"}:
+            patterns.append(f"function {symbol_name}\\(")
+            patterns.append(f"const {symbol_name}\\s*=\\s*\\(")
+            patterns.append(f"const {symbol_name}\\s*=\\s*async\\s*\\(")
+        if symbol_type in {"class", "any"}:
+            patterns.append(f"class {symbol_name}\\s*{{")
+        if symbol_type in {"variable", "any"}:
+            patterns.append(f"(const|let|var) {symbol_name}\\s*=")
+    if language in {"go", "any"}:
+        if symbol_type in {"function", "any"}:
+            patterns.append(f"func {symbol_name}\\(")
+        if symbol_type in {"variable", "any"}:
+            patterns.append(f"var {symbol_name}\\s")
+
+    if not patterns:
+        return f"find_symbol: no patterns for language '{language}' and type '{symbol_type}'"
+
+    pattern_str = "|".join(f"({p})" for p in patterns)
+    cmd = [
+        "rg",
+        "--no-heading",
+        "--line-number",
+        "--color",
+        "never",
+        "-e",
+        pattern_str,
+        "--max-count",
+        str(max_results),
+        ".",
+    ]
+    try:
+        result = subprocess.run(cmd, cwd=Path.cwd(), capture_output=True, text=True, timeout=15)
+    except FileNotFoundError:
+        return "find_symbol failed: ripgrep (rg) not available."
+    except Exception as exc:
+        return f"find_symbol failed: {exc}"
+
+    output = result.stdout.strip()
+    if not output:
+        return f"find_symbol: no matches for '{symbol_name}' (type={symbol_type}, language={language})"
+    lines = output.splitlines()[:max_results]
+    return f"find_symbol found {len(lines)} match(es):\n" + "\n".join(lines)
+
+
+def _handle_apply_patch(raw_args: str) -> str:
+    try:
+        args = json.loads(raw_args or "{}")
+    except json.JSONDecodeError as exc:
+        return f"Invalid arguments for apply_patch: {exc}"
+    patch = args.get("patch")
+    if not patch:
+        return "apply_patch failed: 'patch' is required."
+    base = Path.cwd()
+    patch_file = None
+    try:
+        fd, patch_file = tempfile.mkstemp(prefix="agent-patch-", suffix=".patch", dir=base)
+        Path(patch_file).write_text(patch, encoding="utf-8")
+        res = subprocess.run(
+            ["git", "apply", "--whitespace=nowarn", patch_file],
+            cwd=base,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if res.returncode != 0:
+            return f"apply_patch failed (exit {res.returncode}):\n{res.stderr.strip() or res.stdout.strip()}"
+        return "apply_patch success"
+    except Exception as exc:
+        return f"apply_patch failed: {exc}"
+    finally:
+        if patch_file:
+            try:
+                Path(patch_file).unlink()
+            except Exception:
+                pass
+
+
+def _handle_run_background(raw_args: str) -> str:
+    try:
+        args = json.loads(raw_args or "{}")
+    except json.JSONDecodeError as exc:
+        return f"Invalid arguments for run_background: {exc}"
+    command = (args.get("command") or "").strip()
+    log_file = args.get("log_file")
+    if not command:
+        return "run_background failed: 'command' is required."
+    lowered = command.lower()
+    if lowered.startswith("sudo ") or " apt-get" in lowered:
+        return "run_background blocked: disallowed sudo/apt-get."
+
+    base = Path.cwd()
+    stdout_dest = subprocess.PIPE
+    stderr_dest = subprocess.PIPE
+    log_handle = None
+    if log_file:
+        _, log_path, err = _resolve_path(log_file)
+        if err:
+            return f"run_background blocked: {err}"
+        try:
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            log_handle = open(log_path, "w")
+            stdout_dest = log_handle
+            stderr_dest = subprocess.STDOUT
+        except Exception as exc:
+            return f"run_background failed to open log file: {exc}"
+    try:
+        proc = subprocess.Popen(
+            ["/bin/bash", "-lc", command],
+            stdout=stdout_dest,
+            stderr=stderr_dest,
+            cwd=base,
+            start_new_session=True,
+        )
+        pid = proc.pid
+        log_info = f" (logging to {log_file})" if log_file else ""
+        return f"run_background: started PID {pid}{log_info}\nCommand: {command}"
+    except Exception as exc:
+        return f"run_background failed: {exc}"
+    finally:
+        if log_handle:
+            log_handle.close()
+
+
+def _handle_db_query(raw_args: str) -> str:
+    try:
+        args = json.loads(raw_args or "{}")
+    except json.JSONDecodeError as exc:
+        return f"Invalid arguments for db_query: {exc}"
+    conn_str = (args.get("connection_string") or "").strip()
+    query = (args.get("query") or "").strip()
+    allow_write = bool(args.get("allow_write", False))
+    max_rows = int(args.get("max_rows", 100))
+    if not conn_str or not query:
+        return "db_query failed: 'connection_string' and 'query' are required."
+
+    query_upper = query.upper().strip()
+    write_keywords = {"INSERT", "UPDATE", "DELETE", "DROP", "CREATE", "ALTER", "TRUNCATE"}
+    is_write = any(query_upper.startswith(kw) for kw in write_keywords)
+    if is_write and not allow_write:
+        return "db_query blocked: write operation detected. Set allow_write=true to proceed."
+
+    try:
+        import sqlalchemy
+        from sqlalchemy import create_engine, text
+    except ImportError:
+        return "db_query failed: sqlalchemy not installed. Run: pip install sqlalchemy"
+
+    try:
+        engine = create_engine(
+            conn_str,
+            connect_args={"timeout": 30} if "sqlite" in conn_str else {},
+            pool_pre_ping=True,
+        )
+        with engine.connect() as conn:
+            result = conn.execute(text(query))
+            if query_upper.startswith(("SELECT", "SHOW", "DESCRIBE")):
+                rows = result.fetchmany(max_rows)
+                if not rows:
+                    return "db_query: query returned 0 rows"
+                columns = list(result.keys())
+                lines = [f"db_query: {len(rows)} row(s) returned:"]
+                lines.append(" | ".join(columns))
+                lines.append("-" * (sum(len(c) for c in columns) + 3 * len(columns)))
+                for row in rows:
+                    lines.append(" | ".join(str(v) for v in row))
+                if len(rows) == max_rows:
+                    lines.append(f"(limited to {max_rows} rows)")
+                return "\n".join(lines)
+            else:
+                conn.commit()
+                affected = result.rowcount
+                return f"db_query success: {affected} row(s) affected"
+    except Exception as exc:
+        return f"db_query failed: {exc}"
+
+
+def _handle_generate_tests(raw_args: str, llm_client: LLMClient, settings) -> str:
+    try:
+        args = json.loads(raw_args or "{}")
+    except json.JSONDecodeError as exc:
+        return f"Invalid arguments for generate_tests: {exc}"
+
+    function_name = (args.get("function_name") or "").strip()
+    file_path = (args.get("file_path") or "").strip()
+    test_file_path = args.get("test_file_path")
+    framework = args.get("framework", "pytest")
+    if not function_name or not file_path:
+        return "generate_tests failed: 'function_name' and 'file_path' are required."
+
+    base, source_path, err = _resolve_path(file_path)
+    if err:
+        return f"generate_tests blocked: {err}"
+    if not source_path.exists():
+        return f"generate_tests failed: file not found ({file_path})"
+    try:
+        source_code = source_path.read_text(encoding="utf-8")
+    except Exception as exc:
+        return f"generate_tests failed to read file: {exc}"
+
+    if not test_file_path:
+        test_file_path = f"test_{source_path.name}"
+    _, test_path, err2 = _resolve_path(test_file_path)
+    if err2:
+        return f"generate_tests blocked: {err2}"
+
+    prompt = f"""Generate {framework} test cases for the function `{function_name}` from this code:
+
+```
+{source_code[:5000]}
+```
+
+Requirements:
+- Create comprehensive tests (normal, edge, error cases)
+- Use {framework}
+- Include docstrings
+- Self-contained and runnable
+- Return ONLY the test code
+Generate the complete test file:"""
+
+    try:
+        response = llm_client.chat(
+            messages=[{"role": "user", "content": prompt}],
+            stream=False,
+            max_tokens=2000,
+        )
+        test_code = response.choices[0].message.content.strip()
+        if test_code.startswith("```"):
+            lines = test_code.split("\n")
+            test_code = "\n".join(lines[1:-1])
+        test_path.write_text(test_code, encoding="utf-8")
+        return f"generate_tests success: created {test_path.relative_to(base)} ({len(test_code.splitlines())} lines)"
+    except Exception as exc:
+        return f"generate_tests failed: {exc}"
 
 def _handle_ping_host(raw_args: str) -> str:
     try:

@@ -21,6 +21,7 @@ Usage:
 from __future__ import annotations
 import json
 import logging
+import os
 from pathlib import Path
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -62,6 +63,8 @@ def handle_slash_command(user_input: str, settings, convo, client) -> dict:
 
     elif command in {"model", "m"}:
         _handle_model_command(args, settings, client)
+    elif command in {"init"}:
+        _handle_init_command(args, settings)
 
     elif command in {"config", "cfg"}:
         _handle_config_command(args, settings)
@@ -105,6 +108,7 @@ def _handle_help_command(args: list[str]) -> None:
     """Display help information."""
     print("\nSlash Commands:")
     print("  /help              Show this help message")
+    print("  /init              Analyze workspace and create JAY.md context file")
     print("  /model             List available models")
     print("  /model <name>      Switch to a specific model")
     print("  /model <number>    Switch by number from list")
@@ -197,6 +201,74 @@ def _handle_model_command(args: list[str], settings, client) -> None:
 
     print(f"✓ Model switched: {old_model} → {target}")
     print(f"  Next message will use {target}")
+
+
+def _handle_init_command(args: list[str], settings) -> None:
+    """
+    Analyze workspace and create JAY.md context file (lightweight).
+    """
+    workspace = Path(os.getcwd())
+    output_file = workspace / "JAY.md"
+
+    if output_file.exists():
+        resp = input("JAY.md already exists. Overwrite? [y/N]: ").strip().lower()
+        if resp not in {"y", "yes"}:
+            print("❌ Initialization cancelled.")
+            return
+
+    print(f"🔍 Analyzing workspace: {workspace}")
+
+    entries = []
+    for item in sorted(workspace.iterdir()):
+        if item.name.startswith("."):
+            continue
+        marker = "/" if item.is_dir() else ""
+        entries.append(f"- {item.name}{marker}")
+
+    detections = []
+    for name in ["README.md", "requirements.txt", "package.json", "setup.py", "pyproject.toml", ".git"]:
+        if (workspace / name).exists():
+            detections.append(name)
+
+    md_lines = [
+        "# JAY.md",
+        "",
+        "This file provides context about the project for jay-agent sessions.",
+        "",
+        "## Project Overview",
+        "- (Add a short description of the project.)",
+        "",
+        "## Technology Stack",
+        "- Languages, frameworks, key dependencies (fill in).",
+        "",
+        "## Project Structure",
+        "Detected top-level entries:",
+        *entries,
+        "",
+        "## Detected Files",
+        ", ".join(detections) if detections else "None detected.",
+        "",
+        "## Development Conventions",
+        "- Coding style, patterns, naming (fill in).",
+        "",
+        "## Build & Run Commands",
+        "- How to install deps, build, run (fill in).",
+        "",
+        "## Testing",
+        "- Framework and how to run tests (fill in).",
+        "",
+        "## Configuration",
+        "- Env vars, config files (fill in).",
+        "",
+        "## Repository Guidelines",
+        "- Branching, commit messages, contribution (fill in).",
+    ]
+
+    try:
+        output_file.write_text("\n".join(md_lines), encoding="utf-8")
+        print(f"✅ JAY.md created at {output_file}")
+    except Exception as exc:
+        print(f"❌ Error writing JAY.md: {exc}")
 
 
 def _handle_config_command(args: list[str], settings) -> None:
